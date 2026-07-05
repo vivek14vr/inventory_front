@@ -79,7 +79,7 @@ export function ProductWarehouseThresholds({
     return () => {
       cancelled = true;
     };
-  }, [productId]);
+  }, [productId, onChange, onRowsLoaded]);
 
   if (loading) {
     return <p className="text-sm text-zinc-500">Loading warehouses…</p>;
