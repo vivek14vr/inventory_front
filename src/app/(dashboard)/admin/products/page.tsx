@@ -8,7 +8,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { usePagination } from "@/hooks/usePagination";
 import type { PaginationMeta } from "@/types/pagination";
-import type { Brand, Product } from "@/types/master";
+import type { Brand, Product, ProductWarehouseThreshold } from "@/types/master";
 import { formatSecondaryName } from "@/lib/products/productNames";
 import { formatProductUnitSummary } from "@/lib/products/productUnits";
 import {
@@ -42,6 +42,9 @@ export default function AdminProductsPage() {
   const [warehouseThresholds, setWarehouseThresholds] = useState<Record<string, string>>(
     {}
   );
+  const [warehouseThresholdRows, setWarehouseThresholdRows] = useState<
+    ProductWarehouseThreshold[]
+  >([]);
   const { page, setPage, limit, setLimit, resetPage } = usePagination(20);
 
   const load = useCallback(async () => {
@@ -100,17 +103,27 @@ export default function AdminProductsPage() {
             ? parseInt(form.lowStockThreshold, 10)
             : null,
         });
-        if (Object.keys(warehouseThresholds).length > 0) {
-          const thresholds = buildWarehouseThresholdPayload(warehouseThresholds);
+        const thresholds = buildWarehouseThresholdPayload(
+          warehouseThresholds,
+          warehouseThresholdRows
+        );
+        if (thresholds.length > 0) {
           await api.products.updateWarehouseThresholds(form.editId, thresholds);
         }
         setSuccess("Product and warehouse low-stock alerts updated");
       } else {
-        await api.products.create(payload);
-        setSuccess("Product created");
+        const created = await api.products.create(payload);
+        const thresholds = buildWarehouseThresholdPayload(warehouseThresholds);
+        if (thresholds.length > 0) {
+          await api.products.updateWarehouseThresholds(created.id, thresholds);
+          setSuccess("Product created with warehouse low-stock alerts");
+        } else {
+          setSuccess("Product created");
+        }
       }
       setForm(emptyForm);
       setWarehouseThresholds({});
+      setWarehouseThresholdRows([]);
       setShowForm(false);
       await load();
     } catch (err) {
@@ -142,7 +155,7 @@ export default function AdminProductsPage() {
         <h1 className="text-2xl font-semibold text-zinc-900">Products</h1>
         <p className="mt-1 text-sm text-zinc-500">
           Primary name + brand must be unique (case-insensitive). Set a default low-stock
-          level, then different values per warehouse when editing a product.
+          level, then optional different values for each warehouse below.
         </p>
       </div>
 
@@ -178,6 +191,7 @@ export default function AdminProductsPage() {
             setShowForm(!showForm);
             setForm(emptyForm);
             setWarehouseThresholds({});
+            setWarehouseThresholdRows([]);
           }}
           className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800"
         >
@@ -292,21 +306,20 @@ export default function AdminProductsPage() {
               </p>
             </div>
           </div>
-          {form.editId ? (
-            <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-4">
-              <ProductWarehouseThresholds
-                productId={form.editId}
-                productDefault={
-                  form.lowStockThreshold.trim()
-                    ? parseInt(form.lowStockThreshold, 10)
-                    : null
-                }
-                baseUnit={form.baseUnit.trim() || "piece"}
-                values={warehouseThresholds}
-                onChange={setWarehouseThresholds}
-              />
-            </div>
-          ) : null}
+          <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-4">
+            <ProductWarehouseThresholds
+              productId={form.editId}
+              productDefault={
+                form.lowStockThreshold.trim()
+                  ? parseInt(form.lowStockThreshold, 10)
+                  : null
+              }
+              baseUnit={form.baseUnit.trim() || "piece"}
+              values={warehouseThresholds}
+              onChange={setWarehouseThresholds}
+              onRowsLoaded={setWarehouseThresholdRows}
+            />
+          </div>
           <button
             type="submit"
             disabled={submitting || brands.length === 0}
@@ -376,6 +389,7 @@ export default function AdminProductsPage() {
                           editId: p.id,
                         });
                         setWarehouseThresholds({});
+                        setWarehouseThresholdRows([]);
                         setShowForm(true);
                       }}
                       className="text-xs text-zinc-600 hover:text-zinc-900"

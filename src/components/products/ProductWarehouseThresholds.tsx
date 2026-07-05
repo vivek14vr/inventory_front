@@ -5,18 +5,33 @@ import { api, ApiError } from "@/lib/api/client";
 import type { ProductWarehouseThreshold } from "@/types/master";
 
 type ProductWarehouseThresholdsProps = {
-  productId: string;
+  productId?: string | null;
   productDefault: number | null | undefined;
   baseUnit: string;
   onChange: (values: Record<string, string>) => void;
+  onRowsLoaded?: (rows: ProductWarehouseThreshold[]) => void;
   values: Record<string, string>;
 };
+
+function rowsToInitialValues(
+  rows: ProductWarehouseThreshold[]
+): Record<string, string> {
+  const initial: Record<string, string> = {};
+  for (const row of rows) {
+    initial[row.warehouseId] =
+      row.warehouseLowStockThreshold != null
+        ? String(row.warehouseLowStockThreshold)
+        : "";
+  }
+  return initial;
+}
 
 export function ProductWarehouseThresholds({
   productId,
   productDefault,
   baseUnit,
   onChange,
+  onRowsLoaded,
   values,
 }: ProductWarehouseThresholdsProps) {
   const [rows, setRows] = useState<ProductWarehouseThreshold[]>([]);
@@ -27,19 +42,28 @@ export function ProductWarehouseThresholds({
     let cancelled = false;
     setLoading(true);
     setError("");
-    void api.products
-      .warehouseThresholds(productId)
+
+    const load = productId
+      ? api.products.warehouseThresholds(productId)
+      : api.warehouses.list().then((warehouses) =>
+          warehouses
+            .filter((warehouse) => warehouse.isActive)
+            .map((warehouse) => ({
+              warehouseId: warehouse.id,
+              warehouseName: warehouse.name,
+              warehouseCode: warehouse.code,
+              quantity: 0,
+              warehouseLowStockThreshold: null,
+              effectiveLowStockThreshold: null,
+            }))
+        );
+
+    void load
       .then((data) => {
         if (cancelled) return;
         setRows(data);
-        const initial: Record<string, string> = {};
-        for (const row of data) {
-          initial[row.warehouseId] =
-            row.warehouseLowStockThreshold != null
-              ? String(row.warehouseLowStockThreshold)
-              : "";
-        }
-        onChange(initial);
+        onRowsLoaded?.(data);
+        onChange(rowsToInitialValues(data));
       })
       .catch((err) => {
         if (cancelled) return;
@@ -47,6 +71,7 @@ export function ProductWarehouseThresholds({
           err instanceof ApiError ? err.message : "Failed to load warehouse thresholds"
         );
         setRows([]);
+        onRowsLoaded?.([]);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -133,17 +158,27 @@ export function ProductWarehouseThresholds({
 }
 
 export function buildWarehouseThresholdPayload(
-  values: Record<string, string>
+  values: Record<string, string>,
+  previousRows: ProductWarehouseThreshold[] = []
 ): Array<{ warehouseId: string; lowStockThreshold: number | null }> {
-  return Object.entries(values).map(([warehouseId, raw]) => {
-    const trimmed = raw.trim();
-    if (!trimmed) {
-      return { warehouseId, lowStockThreshold: null };
-    }
-    const parsed = parseInt(trimmed, 10);
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      throw new Error("Each warehouse threshold must be a whole number (0 or greater)");
-    }
-    return { warehouseId, lowStockThreshold: parsed };
-  });
+  const previousByWarehouse = new Map(
+    previousRows.map((row) => [row.warehouseId, row.warehouseLowStockThreshold])
+  );
+
+  return Object.entries(values)
+    .filter(([warehouseId, raw]) => {
+      if (raw.trim()) return true;
+      return previousByWarehouse.get(warehouseId) != null;
+    })
+    .map(([warehouseId, raw]) => {
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        return { warehouseId, lowStockThreshold: null };
+      }
+      const parsed = parseInt(trimmed, 10);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        throw new Error("Each warehouse threshold must be a whole number (0 or greater)");
+      }
+      return { warehouseId, lowStockThreshold: parsed };
+    });
 }
