@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { ButtonSelect } from "@/components/ui/ButtonSelect";
 import { downloadFailedProductImportExcel } from "@/lib/imports/exportFailedProductImport";
 import { formatProductUnitSummary } from "@/lib/products/productUnits";
+import { formatLowStockImportSummary } from "@/lib/imports/formatLowStockImportSummary";
 import { formatSecondaryName } from "@/lib/products/productNames";
 import type { Warehouse } from "@/types/master";
 import type {
@@ -258,8 +259,10 @@ export function ProductImportPanel() {
             </tbody>
           </table>
           <p className="border-t border-emerald-200 px-4 py-2 text-xs text-emerald-900/80">
-            Low quantity is in cartons (e.g. 5 cartons × 800 pieces = alert at 4,000 pieces).
-            New brands are created only when you choose &quot;Create new brand&quot; for that row.
+            Low quantity is in cartons or boxes when pack size is greater than 1 (e.g. 4
+            boxes × 800 pieces = alert at 3,200 pieces). Set different alerts per warehouse
+            later on the Products page. New brands are created only when you choose
+            &quot;Create new brand&quot; for that row.
           </p>
         </div>
 
@@ -538,7 +541,7 @@ function ImportReviewTable({
                     {formatProductUnitSummary(row)}
                     {row.lowStockThreshold != null ? (
                       <div className="text-xs text-zinc-500">
-                        Low at {row.lowStockThreshold.toLocaleString()} {row.baseUnit}
+                        {formatLowStockImportSummary(row)}
                       </div>
                     ) : null}
                   </td>
