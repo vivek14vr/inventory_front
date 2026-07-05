@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+:root {
+  /* PetPooja-inspired warm orange theme */
+  --background: #fff8f3;
+  --foreground: #1c1917;
+  --primary: #ea580c;
+  --primary-hover: #c2410c;
+  --primary-light: #ffedd5;
+  --primary-muted: #fed7aa;
+  --surface: #ffffff;
+  --border: #e7e5e4;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-light: var(--primary-light);
+  --color-primary-muted: var(--primary-muted);
+  --color-surface: var(--surface);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* App UI is designed for light mode only */
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+@layer components {
+  .form-input,
+  .form-select {
+    @apply mt-1 w-full min-h-12 rounded-xl border border-stone-300 px-4 py-3 text-base text-stone-900;
+  }
+
+  /* Themed date / time picker that matches the orange button styling */
+  .form-date {
+    @apply min-h-10 rounded-xl border-2 border-stone-200 bg-white px-4 text-sm font-semibold text-stone-700 transition;
+    color-scheme: light;
+    accent-color: var(--primary);
+  }
+
+  .form-date:hover {
+    @apply border-orange-300;
+  }
+
+  .form-date:focus {
+    @apply border-orange-500 outline-none ring-2 ring-orange-500/20;
+  }
+
+  .form-date::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.85;
+    transition: opacity 0.15s ease;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23ea580c' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0V11.25A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+  }
+
+  .form-date:hover::-webkit-calendar-picker-indicator {
+    opacity: 1;
+  }
+
+  .form-btn-primary {
+    @apply w-full min-h-12 rounded-xl bg-orange-600 px-5 py-3 text-base font-semibold text-white hover:bg-orange-700 active:bg-orange-800 disabled:opacity-60 sm:w-auto;
+  }
+
+  .form-card {
+    @apply w-full max-w-xl space-y-5 rounded-2xl border border-stone-200 bg-white p-5 sm:p-7;
+  }
+
+  .login-label {
+    @apply block text-base font-medium text-stone-700;
+  }
+
+  .login-input {
+    @apply transition-[border-color,box-shadow,background-color] duration-200;
+  }
+
+  .login-input:focus {
+    @apply border-orange-500 bg-white outline-none ring-4 ring-orange-500/15;
+  }
+
+  .login-submit {
+    @apply shadow-md shadow-orange-900/15 transition-[background-color,transform,box-shadow] duration-200;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .login-submit:hover:not(:disabled) {
+    @apply bg-orange-700 shadow-lg shadow-orange-900/20;
+  }
+
+  .login-submit:active:not(:disabled) {
+    @apply scale-[0.99];
+  }
+
+  .login-submit:focus-visible {
+    @apply outline-none ring-4 ring-orange-500/30 ring-offset-2;
+  }
+
+  /* Large touch-friendly nav link */
+  .nav-link {
+    @apply flex min-h-[52px] items-center gap-3.5 rounded-2xl px-4 py-3 text-base font-semibold transition;
+  }
+
+  .nav-link-active {
+    @apply bg-orange-600 text-white shadow-md shadow-orange-900/20;
+  }
+
+  .nav-link-inactive {
+    @apply text-stone-600 hover:bg-orange-50 hover:text-stone-900;
+  }
+}
