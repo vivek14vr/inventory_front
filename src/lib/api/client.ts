@@ -1,6 +1,6 @@
 import { refreshAccessToken } from "@/lib/api/authSession";
 import { apiUrl, buildApiUrl } from "@/lib/api/base";
-import { getAccessToken, getRefreshToken } from "@/lib/auth/token";
+import { getAccessToken, getAccessTokenIfValid, getRefreshToken } from "@/lib/auth/token";
 import type { AuthUser, LoginResponse, PublicUser } from "@/types/auth";
 import type { Brand, Product, ProductWarehouseThreshold, Warehouse } from "@/types/master";
 import type {
@@ -81,7 +81,9 @@ export async function apiClient<T>(
     );
   }
 
-  const authToken = skipAuth ? undefined : (token ?? getAccessToken() ?? undefined);
+  const authToken = skipAuth
+    ? undefined
+    : (token ?? getAccessTokenIfValid() ?? undefined);
 
   let response: Response;
   try {

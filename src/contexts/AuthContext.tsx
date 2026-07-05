@@ -14,11 +14,13 @@ import { refreshAccessToken } from "@/lib/api/authSession";
 import { AUTH_ROUTES } from "@/lib/auth/constants";
 import {
   clearAuthTokens,
-  getAccessToken,
+  getAccessTokenIfValid,
   getDashboardPath,
   hydrateAuthStorageFromCookie,
+  msUntilAccessTokenRefresh,
   setAuthTokens,
   syncAccessTokenCookie,
+  getAccessToken,
 } from "@/lib/auth/token";
 import type { AuthUser } from "@/types/auth";
 
@@ -51,9 +53,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (loginInProgressRef.current) return;
 
     hydrateAuthStorageFromCookie();
-    syncAccessTokenCookie();
 
-    let token = getAccessToken();
+    let token = getAccessTokenIfValid();
     if (!token) {
       token = await refreshAccessToken();
     }
@@ -87,6 +88,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
     }
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const schedule = () => {
+      if (cancelled) return;
+      const token = getAccessToken();
+      if (!token) return;
+      const delay = msUntilAccessTokenRefresh(token);
+      if (delay == null) return;
+
+      timer = window.setTimeout(async () => {
+        if (cancelled) return;
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+          syncAccessTokenCookie();
+        }
+        schedule();
+      }, delay);
+    };
+
+    schedule();
+    return () => {
+      cancelled = true;
+      if (timer != null) window.clearTimeout(timer);
+    };
+  }, [user]);
 
   useEffect(() => {
     if (pathname === AUTH_ROUTES.login) {

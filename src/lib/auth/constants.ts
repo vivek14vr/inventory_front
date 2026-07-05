@@ -2,7 +2,7 @@
 export const ACCESS_TOKEN_COOKIE = "inventory_access";
 export const ACCESS_TOKEN_STORAGE_KEY = "inventory_access";
 
-/** Rotating refresh token (sessionStorage; httpOnly cookie also set when same-site) */
+/** Rotating refresh token (localStorage + httpOnly cookie when same-site) */
 export const REFRESH_TOKEN_STORAGE_KEY = "inventory_refresh";
 
 /** @deprecated Use ACCESS_TOKEN_COOKIE */

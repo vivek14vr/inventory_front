@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { jwtVerify } from "jose";
+import { decodeJwt, jwtVerify } from "jose";
 import { ACCESS_TOKEN_COOKIE, AUTH_ROUTES } from "@/lib/auth/constants";
 import {
   canAccessAppPath,
@@ -26,6 +26,24 @@ async function verifyToken(token: string) {
     };
     if (p.type && p.type !== "access") return null;
     return p;
+  } catch {
+    return null;
+  }
+}
+
+/** Expired access tokens are allowed through so the client can refresh before the next API call. */
+function decodeExpiredAccessToken(token: string) {
+  try {
+    const payload = decodeJwt(token) as {
+      type?: string;
+      role?: string;
+      permissions?: string[];
+      exp?: number;
+    };
+    if (payload.type && payload.type !== "access") return null;
+    if (!payload.role || !payload.exp) return null;
+    if (payload.exp * 1000 > Date.now()) return null;
+    return payload;
   } catch {
     return null;
   }
@@ -69,6 +87,11 @@ export async function proxy(request: NextRequest) {
 
     const payload = await verifyToken(token);
     if (!payload?.role) {
+      const expired = decodeExpiredAccessToken(token);
+      if (expired?.role) {
+        return NextResponse.next();
+      }
+
       const loginUrl = new URL(AUTH_ROUTES.login, request.url);
       if (!process.env.JWT_SECRET) {
         loginUrl.searchParams.set("error", "config");
