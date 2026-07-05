@@ -2,6 +2,8 @@ import Link from "next/link";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Panel } from "@/components/ui/Panel";
 import { AUTH_ROUTES } from "@/lib/auth/constants";
+import { lowStockSourceLabel } from "@/lib/inventory/lowStock";
+import { formatBaseQuantityWithStockUnit } from "@/lib/products/productUnits";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import type { AdminDashboard } from "@/types/inventory";
 
@@ -64,7 +66,16 @@ export function LowStockReportPanel({
                         <span className="font-mono">({item.warehouseCode})</span>
                         {item.lowStockThreshold != null ? (
                           <span className="ml-2 text-amber-700">
-                            threshold ≤ {item.lowStockThreshold}
+                            threshold ≤{" "}
+                            {formatBaseQuantityWithStockUnit(item.lowStockThreshold, item)}
+                            <span className="text-amber-600/80">
+                              {" "}
+                              (
+                              {lowStockSourceLabel(item) === "warehouse"
+                                ? "warehouse"
+                                : "default"}
+                              )
+                            </span>
                           </span>
                         ) : null}
                       </p>
@@ -108,7 +119,11 @@ export function LowStockReportPanel({
                         <span className="font-normal text-zinc-500"> · {item.brandName}</span>
                       </p>
                       <p className="text-xs text-orange-800">
-                        total threshold ≤ {item.totalLowStockThreshold.toLocaleString()}
+                        total threshold ≤{" "}
+                        {formatBaseQuantityWithStockUnit(
+                          item.totalLowStockThreshold,
+                          item
+                        )}
                       </p>
                     </div>
                     <span className="shrink-0 rounded-full bg-orange-100 px-3 py-1 text-orange-900">

@@ -23,7 +23,9 @@ import { FilterField, FilterSelect } from "@/components/ui/FilterFields";
 import { SelectMenu } from "@/components/ui/SelectMenu";
 import { AUTH_ROUTES } from "@/lib/auth/constants";
 import { formatSecondaryName } from "@/lib/products/productNames";
+import { isWarehouseLowStock, lowStockSourceLabel } from "@/lib/inventory/lowStock";
 import {
+  formatBaseQuantityWithStockUnit,
   formatBaseUnits,
   getBaseUnitLabel,
   pluralizeStockUnit,
@@ -419,11 +421,7 @@ function toStockRow(product: StockProductRow, loc: StockProductRow["locations"][
 }
 
 function isWarehouseLow(row: Pick<StockRow, "quantity" | "lowStockThreshold">): boolean {
-  return (
-    row.lowStockThreshold != null &&
-    row.quantity > 0 &&
-    row.quantity <= row.lowStockThreshold
-  );
+  return isWarehouseLowStock(row);
 }
 
 function StockView({
@@ -711,13 +709,19 @@ function StockView({
                               ) : null}
                             </p>
                             {stockRow?.lowStockThreshold != null ? (
-                              <p className="text-[10px] text-stone-500">
+                              <div className="text-[10px] text-stone-500">
                                 Alert ≤{" "}
-                                {stockRow.warehouseLowStockThreshold != null
-                                  ? "custom "
-                                  : "default "}
-                                {stockRow.lowStockThreshold.toLocaleString()} {product.baseUnit}
-                              </p>
+                                {lowStockSourceLabel(stockRow) === "warehouse" ? "custom " : "default "}
+                                <StockQuantityDisplay
+                                  quantity={stockRow.lowStockThreshold}
+                                  stockUnit={product.stockUnit}
+                                  unitsPerStockUnit={product.unitsPerStockUnit}
+                                  baseUnit={product.baseUnit}
+                                  size="sm"
+                                  align="left"
+                                  className="!inline-flex !flex-row !items-center !gap-1"
+                                />
+                              </div>
                             ) : null}
                           </div>
                           {loc ? (
@@ -1008,7 +1012,7 @@ function AdjustStockDialog({
               Alert when quantity at this warehouse is at or below the threshold. Leave blank
               to use the product default
               {row.productLowStockThreshold != null
-                ? ` (${row.productLowStockThreshold.toLocaleString()} ${baseLabel})`
+                ? ` (${formatBaseQuantityWithStockUnit(row.productLowStockThreshold, row)})`
                 : ""}
               .
             </p>

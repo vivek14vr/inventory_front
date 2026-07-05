@@ -173,6 +173,7 @@ export type AdminDashboard = {
     baseUnit?: string;
     quantity: number;
     lowStockThreshold?: number;
+    warehouseLowStockThreshold?: number;
   }>;
   lowStockTotalCount: number;
   lowStockTotals: Array<{

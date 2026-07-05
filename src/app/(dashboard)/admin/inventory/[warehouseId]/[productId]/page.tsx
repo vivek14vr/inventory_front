@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/DataTable";
 import { usePagination } from "@/hooks/usePagination";
 import type { PaginationMeta } from "@/types/pagination";
+import { formatBaseQuantityWithStockUnit } from "@/lib/products/productUnits";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import type { StockItemDetailResponse } from "@/types/inventory";
 
@@ -174,12 +175,13 @@ export default function InventoryItemDetailPage() {
           Set a threshold for this warehouse only. Leave blank and save to use the product
           default
           {item.productLowStockThreshold != null
-            ? ` (${item.productLowStockThreshold.toLocaleString()} ${item.baseUnit ?? "units"})`
+            ? ` (${formatBaseQuantityWithStockUnit(item.productLowStockThreshold, item)})`
             : " (none set on product)"}
           . Effective alert level:{" "}
           {item.lowStockThreshold != null
-            ? `${item.lowStockThreshold.toLocaleString()} ${item.baseUnit ?? "units"}`
+            ? formatBaseQuantityWithStockUnit(item.lowStockThreshold, item)
             : "not configured"}
+          {item.warehouseLowStockThreshold != null ? " (warehouse)" : item.lowStockThreshold != null ? " (default)" : ""}
         </p>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="text-sm">

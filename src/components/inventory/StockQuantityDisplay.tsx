@@ -41,18 +41,18 @@ export function StockQuantityDisplay({
 
   if (!split.usesStockUnit) {
     return (
-      <div className={`flex flex-col tabular-nums ${ALIGN[align]} ${className}`}>
+      <span className={`inline-flex flex-col tabular-nums ${ALIGN[align]} ${className}`}>
         <span className={`${styles.primary} whitespace-nowrap text-stone-900`}>
           {formatBaseUnits(quantity, unitFields)}
         </span>
-      </div>
+      </span>
     );
   }
 
   const packLabel = pluralizeStockUnit(split.unitLabel, split.fullUnits);
 
   return (
-    <div className={`flex flex-col gap-0.5 tabular-nums ${ALIGN[align]} ${className}`}>
+    <span className={`inline-flex flex-col gap-0.5 tabular-nums ${ALIGN[align]} ${className}`}>
       <span className={`${styles.primary} whitespace-nowrap text-stone-900`}>
         {split.fullUnits.toLocaleString()} {packLabel}
       </span>
@@ -61,6 +61,6 @@ export function StockQuantityDisplay({
           + {formatBaseUnits(split.loose, unitFields)}
         </span>
       ) : null}
-    </div>
+    </span>
   );
 }
