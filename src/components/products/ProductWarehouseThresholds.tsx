@@ -1,13 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
+import {
+  formatThresholdPreview,
+  thresholdBaseToDisplay,
+  thresholdDisplayToBase,
+  type ProductUnitFields,
+  type QuantityEntryMode,
+} from "@/lib/products/productUnits";
 import type { ProductWarehouseThreshold } from "@/types/master";
 
 type ProductWarehouseThresholdsProps = {
   productId?: string | null;
   productDefault: number | null | undefined;
   baseUnit: string;
+  stockUnit: string;
+  unitsPerStockUnit: number;
+  thresholdMode: QuantityEntryMode;
   onChange: (values: Record<string, string>) => void;
   onRowsLoaded?: (rows: ProductWarehouseThreshold[]) => void;
   values: Record<string, string>;
@@ -30,6 +40,9 @@ export function ProductWarehouseThresholds({
   productId,
   productDefault,
   baseUnit,
+  stockUnit,
+  unitsPerStockUnit,
+  thresholdMode,
   onChange,
   onRowsLoaded,
   values,
@@ -37,6 +50,21 @@ export function ProductWarehouseThresholds({
   const [rows, setRows] = useState<ProductWarehouseThreshold[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const productUnits = useMemo<Partial<ProductUnitFields>>(
+    () => ({
+      baseUnit: baseUnit.trim() || "piece",
+      stockUnit: stockUnit.trim() || "unit",
+      unitsPerStockUnit: unitsPerStockUnit > 1 ? unitsPerStockUnit : 1,
+    }),
+    [baseUnit, stockUnit, unitsPerStockUnit]
+  );
+
+  const canToggle = unitsPerStockUnit > 1;
+  const defaultPlaceholder =
+    productDefault != null
+      ? thresholdBaseToDisplay(productDefault, thresholdMode, productUnits)
+      : "default";
 
   useEffect(() => {
     let cancelled = false;
@@ -105,7 +133,9 @@ export function ProductWarehouseThresholds({
           Set a different alert level for each warehouse. Leave blank to use the product
           default
           {productDefault != null
-            ? ` (${productDefault.toLocaleString()} ${baseUnit})`
+            ? ` (${thresholdBaseToDisplay(productDefault, thresholdMode, productUnits)}${
+                thresholdMode === "units" || !canToggle ? ` ${baseUnit}` : ""
+              })`
             : ""}
           .
         </p>
@@ -120,36 +150,56 @@ export function ProductWarehouseThresholds({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.warehouseId} className="border-t border-zinc-100">
-                <td className="px-3 py-2">
-                  <span className="font-medium text-zinc-900">{row.warehouseName}</span>
-                  <span className="ml-1.5 font-mono text-xs text-zinc-500">
-                    ({row.warehouseCode})
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums text-zinc-600">
-                  {row.quantity.toLocaleString()} {baseUnit}
-                </td>
-                <td className="px-3 py-2 text-right">
-                  <input
-                    type="number"
-                    min={0}
-                    value={values[row.warehouseId] ?? ""}
-                    onChange={(e) =>
-                      onChange({
-                        ...values,
-                        [row.warehouseId]: e.target.value,
-                      })
-                    }
-                    placeholder={
-                      productDefault != null ? String(productDefault) : "default"
-                    }
-                    className="w-28 rounded-lg border border-zinc-300 px-2 py-1.5 text-right text-sm"
-                  />
-                </td>
-              </tr>
-            ))}
+            {rows.map((row) => {
+              const baseValue = values[row.warehouseId] ?? "";
+              const displayValue = thresholdBaseToDisplay(
+                baseValue.trim() ? parseInt(baseValue, 10) : null,
+                thresholdMode,
+                productUnits
+              );
+              const preview = formatThresholdPreview(displayValue, thresholdMode, productUnits);
+
+              return (
+                <tr key={row.warehouseId} className="border-t border-zinc-100">
+                  <td className="px-3 py-2">
+                    <span className="font-medium text-zinc-900">{row.warehouseName}</span>
+                    <span className="ml-1.5 font-mono text-xs text-zinc-500">
+                      ({row.warehouseCode})
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-zinc-600">
+                    {row.quantity.toLocaleString()} {baseUnit}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <div className="inline-flex flex-col items-end gap-1">
+                      <input
+                        type="number"
+                        min={0}
+                        step={thresholdMode === "stockUnit" && canToggle ? "any" : 1}
+                        value={displayValue}
+                        onChange={(e) => {
+                          const nextBase = thresholdDisplayToBase(
+                            e.target.value,
+                            thresholdMode,
+                            productUnits
+                          );
+                          onChange({
+                            ...values,
+                            [row.warehouseId]:
+                              nextBase != null ? String(nextBase) : "",
+                          });
+                        }}
+                        placeholder={defaultPlaceholder}
+                        className="w-28 rounded-lg border border-zinc-300 px-2 py-1.5 text-right text-sm"
+                      />
+                      {preview ? (
+                        <span className="text-[10px] font-medium text-zinc-500">{preview}</span>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

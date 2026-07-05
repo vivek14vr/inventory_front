@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { ButtonSelect } from "@/components/ui/ButtonSelect";
@@ -10,7 +10,15 @@ import { usePagination } from "@/hooks/usePagination";
 import type { PaginationMeta } from "@/types/pagination";
 import type { Brand, Product, ProductWarehouseThreshold } from "@/types/master";
 import { formatSecondaryName } from "@/lib/products/productNames";
-import { formatProductUnitSummary } from "@/lib/products/productUnits";
+import {
+  formatProductUnitSummary,
+  formatThresholdPreview,
+  thresholdBaseToDisplay,
+  thresholdDisplayToBase,
+  type QuantityEntryMode,
+  usesStockUnit,
+} from "@/lib/products/productUnits";
+import { ThresholdUnitToggle } from "@/components/products/ThresholdUnitToggle";
 import {
   ProductWarehouseThresholds,
   buildWarehouseThresholdPayload,
@@ -45,7 +53,29 @@ export default function AdminProductsPage() {
   const [warehouseThresholdRows, setWarehouseThresholdRows] = useState<
     ProductWarehouseThreshold[]
   >([]);
+  const [thresholdMode, setThresholdMode] = useState<QuantityEntryMode>("units");
   const { page, setPage, limit, setLimit, resetPage } = usePagination(20);
+
+  const perPack = parseInt(form.unitsPerStockUnit, 10) || 1;
+  const formBaseUnit = form.baseUnit.trim() || "piece";
+  const formStockUnit = perPack > 1 ? form.stockUnit.trim() || "unit" : formBaseUnit;
+  const productUnits = useMemo(
+    () => ({
+      baseUnit: formBaseUnit,
+      stockUnit: formStockUnit,
+      unitsPerStockUnit: perPack,
+    }),
+    [formBaseUnit, formStockUnit, perPack]
+  );
+  const defaultThresholdPreview = formatThresholdPreview(
+    thresholdBaseToDisplay(
+      form.lowStockThreshold.trim() ? parseInt(form.lowStockThreshold, 10) : null,
+      thresholdMode,
+      productUnits
+    ),
+    thresholdMode,
+    productUnits
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -124,6 +154,7 @@ export default function AdminProductsPage() {
       setForm(emptyForm);
       setWarehouseThresholds({});
       setWarehouseThresholdRows([]);
+      setThresholdMode("units");
       setShowForm(false);
       await load();
     } catch (err) {
@@ -192,6 +223,7 @@ export default function AdminProductsPage() {
             setForm(emptyForm);
             setWarehouseThresholds({});
             setWarehouseThresholdRows([]);
+            setThresholdMode("units");
           }}
           className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800"
         >
@@ -294,18 +326,48 @@ export default function AdminProductsPage() {
               <input
                 type="number"
                 min={0}
-                value={form.lowStockThreshold}
-                onChange={(e) =>
-                  setForm({ ...form, lowStockThreshold: e.target.value })
-                }
+                step={thresholdMode === "stockUnit" && usesStockUnit(productUnits) ? "any" : 1}
+                value={thresholdBaseToDisplay(
+                  form.lowStockThreshold.trim()
+                    ? parseInt(form.lowStockThreshold, 10)
+                    : null,
+                  thresholdMode,
+                  productUnits
+                )}
+                onChange={(e) => {
+                  const nextBase = thresholdDisplayToBase(
+                    e.target.value,
+                    thresholdMode,
+                    productUnits
+                  );
+                  setForm({
+                    ...form,
+                    lowStockThreshold: nextBase != null ? String(nextBase) : "",
+                  });
+                }}
                 className="form-input mt-1"
                 placeholder="e.g. 50"
               />
-              <p className="mt-1 text-xs text-zinc-500">
-                Used when a warehouse has no custom alert below
-              </p>
+              {defaultThresholdPreview ? (
+                <p className="mt-1 text-xs font-medium text-zinc-500">{defaultThresholdPreview}</p>
+              ) : (
+                <p className="mt-1 text-xs text-zinc-500">
+                  Used when a warehouse has no custom alert below
+                </p>
+              )}
             </div>
           </div>
+          {usesStockUnit(productUnits) ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <span className="text-sm text-zinc-600">Low stock alerts in</span>
+              <ThresholdUnitToggle
+                mode={thresholdMode}
+                onModeChange={setThresholdMode}
+                product={productUnits}
+                size="sm"
+              />
+            </div>
+          ) : null}
           <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-4">
             <ProductWarehouseThresholds
               productId={form.editId}
@@ -314,7 +376,10 @@ export default function AdminProductsPage() {
                   ? parseInt(form.lowStockThreshold, 10)
                   : null
               }
-              baseUnit={form.baseUnit.trim() || "piece"}
+              baseUnit={formBaseUnit}
+              stockUnit={formStockUnit}
+              unitsPerStockUnit={perPack}
+              thresholdMode={thresholdMode}
               values={warehouseThresholds}
               onChange={setWarehouseThresholds}
               onRowsLoaded={setWarehouseThresholdRows}
@@ -390,6 +455,7 @@ export default function AdminProductsPage() {
                         });
                         setWarehouseThresholds({});
                         setWarehouseThresholdRows([]);
+                        setThresholdMode("units");
                         setShowForm(true);
                       }}
                       className="text-xs text-zinc-600 hover:text-zinc-900"

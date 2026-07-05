@@ -195,6 +195,51 @@ export function stockUnitsAndLooseToBase(
   return Math.max(0, fullUnits) * per + Math.max(0, loose);
 }
 
+export function thresholdBaseToDisplay(
+  base: number | null | undefined,
+  mode: QuantityEntryMode,
+  product?: Partial<ProductUnitFields> | null
+): string {
+  if (base == null || !Number.isFinite(base) || base < 0) return "";
+  if (mode === "units" || !usesStockUnit(product)) return String(base);
+  const per = getUnitsPerStockUnit(product);
+  const boxes = base / per;
+  if (Number.isInteger(boxes)) return String(boxes);
+  return String(Number(boxes.toFixed(4)));
+}
+
+export function thresholdDisplayToBase(
+  display: string,
+  mode: QuantityEntryMode,
+  product?: Partial<ProductUnitFields> | null
+): number | null {
+  const trimmed = display.trim();
+  if (!trimmed) return null;
+  const entered =
+    mode === "stockUnit" && usesStockUnit(product)
+      ? parseFloat(trimmed)
+      : parseInt(trimmed, 10);
+  if (!Number.isFinite(entered) || entered < 0) return null;
+  if (mode === "units" || !usesStockUnit(product)) return Math.floor(entered);
+  return Math.floor(stockUnitsToBase(entered, product));
+}
+
+export function formatThresholdPreview(
+  display: string,
+  mode: QuantityEntryMode,
+  product?: Partial<ProductUnitFields> | null
+): string | null {
+  const base = thresholdDisplayToBase(display, mode, product);
+  if (base == null || base <= 0) return null;
+  if (mode === "units" && usesStockUnit(product)) {
+    return formatUnitsEntryPreview(base, product);
+  }
+  if (mode === "stockUnit" && usesStockUnit(product)) {
+    return formatEnteredQuantityPreview(parseFloat(display) || 0, product);
+  }
+  return null;
+}
+
 export function formatBaseQuantityWithStockUnit(
   baseQty: number,
   product?: Partial<ProductUnitFields> | null
