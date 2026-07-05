@@ -15,6 +15,9 @@ import type {
   ProductImportPreview,
   ProductImportResult,
   ProductImportRowDecision,
+  SalesImportConfirmVoucher,
+  SalesImportPreview,
+  SalesImportResult,
   TallyImport,
 } from "@/types/imports";
 import type { ReportFilters, ReportResult, ReportType } from "@/types/reports";
@@ -674,6 +677,45 @@ export const api = {
       rows: ProductImportRowDecision[];
     }) =>
       apiClient<ProductImportResult>("/imports/products/confirm", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    previewSales: async (file: File): Promise<SalesImportPreview> => {
+      const form = new FormData();
+      form.append("file", file);
+      const token = getAccessToken();
+      let response: Response;
+      try {
+        response = await fetch(apiUrl("/imports/sales/preview"), {
+          method: "POST",
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: form,
+        });
+      } catch {
+        throw new ApiError(
+          "Cannot reach server. Check that the API is running on port 4000.",
+          0,
+          "NETWORK_ERROR"
+        );
+      }
+      let body: ApiResponse<SalesImportPreview>;
+      try {
+        body = (await response.json()) as ApiResponse<SalesImportPreview>;
+      } catch {
+        throw new ApiError("Invalid response from server", response.status);
+      }
+      if (!response.ok || !body.success) {
+        throw new ApiError(body.message ?? "Preview failed", response.status, body.code);
+      }
+      return body.data as SalesImportPreview;
+    },
+    confirmSales: (data: {
+      fileName?: string;
+      warehouseId: string;
+      vouchers: SalesImportConfirmVoucher[];
+    }) =>
+      apiClient<SalesImportResult>("/imports/sales/confirm", {
         method: "POST",
         body: JSON.stringify(data),
       }),

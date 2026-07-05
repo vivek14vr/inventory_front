@@ -9,7 +9,8 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-
+/product_catalog_import_demo.pdf
+/salesfinal (1).pdf
 # testing
 /coverage
 
