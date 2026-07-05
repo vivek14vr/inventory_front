@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { DirectSellForm } from "@/components/stock/DirectSellForm";
 import { StockFlowBar } from "@/components/stock/StockFlowBar";
 import { resolveWarehouseId, shouldPickWarehouse } from "@/components/stock/stockFlowUtils";
 import { SelectionGrid } from "@/components/ui/SelectionGrid";
+import { SearchInputWithSuggestions } from "@/components/search/SearchInputWithSuggestions";
+import { createBrandProductSuggestions } from "@/lib/search/productSearchSuggestions";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { api, ApiError } from "@/lib/api/client";
@@ -12,7 +15,9 @@ import {
   quantityEntryToBase,
   type QuantityEntryMode,
 } from "@/lib/products/productUnits";
-import { matchesProductSearch, productPickerSubtitle } from "@/lib/products/productNames";
+import { matchesProductSearch } from "@/lib/products/productNames";
+import { productSelectionGridItem } from "@/lib/products/productSelectionGrid";
+import { useWarehouseProductBalances } from "@/hooks/useWarehouseProductBalances";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import { StockQuantityEntry } from "@/components/stock/StockQuantityEntry";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
@@ -39,7 +44,21 @@ type StockOutFormProps = {
   onSuccess?: (message: string) => void;
 };
 
-export function StockOutForm({
+export function StockOutForm(props: StockOutFormProps) {
+  if (props.mode === "sell") {
+    return (
+      <DirectSellForm
+        requireWarehouse={props.requireWarehouse}
+        defaultWarehouseId={props.defaultWarehouseId}
+        allowedWarehouseIds={props.allowedWarehouseIds}
+        onSuccess={props.onSuccess}
+      />
+    );
+  }
+  return <StockOutSingleForm {...props} />;
+}
+
+function StockOutSingleForm({
   requireWarehouse = false,
   defaultWarehouseId = "",
   allowedWarehouseIds,
@@ -49,7 +68,7 @@ export function StockOutForm({
 }: StockOutFormProps) {
   const pickWarehouse = shouldPickWarehouse({ requireWarehouse, allowedWarehouseIds });
   const forcedDispatch: "TRANSFER" | "DIRECT_SELLING" | "" =
-    mode === "sell" ? "DIRECT_SELLING" : mode === "transfer" ? "TRANSFER" : "";
+    mode === "transfer" ? "TRANSFER" : "";
 
   const [step, setStep] = useState<StockOutStep>(() =>
     pickWarehouse ? "warehouse" : "brand"
@@ -107,9 +126,15 @@ export function StockOutForm({
   const filteredProducts = products.filter(
     (p) => p.isActive && matchesProductSearch(p, productSearch)
   );
+  const fetchProductSuggestions = useMemo(
+    () => createBrandProductSuggestions(products),
+    [products]
+  );
   const selectedDestination = destinationOptions.find(
     (w) => w.id === destinationWarehouseId
   );
+  const { loading: loadingProductBalances, quantityFor, error: availabilityError } =
+    useWarehouseProductBalances(resolvedWarehouseId, { enabled: step === "product", brandId });
 
   useEffect(() => {
     setLoadingWarehouses(true);
@@ -416,12 +441,23 @@ export function StockOutForm({
 
       {step === "product" && (
         <div className="space-y-4">
-          <input
-            type="search"
+          {availabilityError ? (
+            <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {availabilityError}
+            </p>
+          ) : null}
+          <SearchInputWithSuggestions
             value={productSearch}
-            onChange={(e) => setProductSearch(e.target.value)}
+            onChange={setProductSearch}
+            onSelect={(suggestion) => {
+              setProductSearch(suggestion.searchTerm);
+              selectProduct(suggestion.id);
+            }}
+            fetchSuggestions={fetchProductSuggestions}
             placeholder="Search primary or secondary name…"
-            className="form-input w-full"
+            ariaLabel="Search products"
+            inputClassName="form-input w-full"
+            emptyMessage={(term) => `No products match “${term}”`}
           />
           <SelectionGrid
             title="Select product"
@@ -430,14 +466,15 @@ export function StockOutForm({
                 ? `Brand: ${selectedBrand.name} — same stock for primary or secondary name`
                 : undefined
             }
-            items={filteredProducts.map((p) => ({
-              id: p.id,
-              title: p.name,
-              subtitle: productPickerSubtitle(p),
-            }))}
+            items={filteredProducts.map((p) =>
+              productSelectionGridItem(p, {
+                quantity: quantityFor(p.id),
+                loadingQuantity: loadingProductBalances,
+              })
+            )}
             onSelect={selectProduct}
             onBack={goBack}
-            loading={loadingProducts}
+            loading={loadingProducts || loadingProductBalances}
             emptyMessage={
               productSearch.trim()
                 ? "No products match your search"

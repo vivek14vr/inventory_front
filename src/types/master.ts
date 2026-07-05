@@ -36,9 +36,9 @@ export type Product = {
   stockUnit: string;
   /** Base units per one stock unit. */
   unitsPerStockUnit: number;
-  /** Alert when stock falls to this level or below at a warehouse without its own override. */
+  /** @deprecated Legacy per-warehouse fallback — prefer total + warehouse overrides. */
   lowStockThreshold?: number;
-  /** Combined low-stock alert across all warehouses. */
+  /** Overall low-stock alert across all warehouses. */
   totalLowStockThreshold?: number;
   /** Warehouses with a custom low-stock override (not the product default). */
   warehouseLowStockOverrides?: Array<{

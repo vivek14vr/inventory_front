@@ -15,7 +15,7 @@ export default function AppStockOutPage() {
     <div className="space-y-6 text-zinc-900">
       <PageHeader
         title="Stock out"
-        description="Record a direct sale to a client. Use Transfer to send stock between warehouses."
+        description="Record a direct sale to a client with one or more products. Use Transfer to send stock between warehouses."
       />
 
       {!can(Permission.STOCK_OUT) ? (

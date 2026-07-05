@@ -6,6 +6,8 @@ export type SelectionGridItem = {
   id: string;
   title: string;
   subtitle?: string;
+  /** Extra line, e.g. available stock at a warehouse. */
+  detail?: string;
   badge?: string;
 };
 
@@ -116,6 +118,9 @@ export function SelectionGrid({
                 </span>
                 {item.subtitle && (
                   <span className="text-sm font-medium text-stone-500">{item.subtitle}</span>
+                )}
+                {item.detail && (
+                  <span className="text-sm font-bold text-stone-800">{item.detail}</span>
                 )}
               </button>
             );

@@ -1,10 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { ButtonSelect } from "@/components/ui/ButtonSelect";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
+import { ThresholdUnitToggle } from "@/components/products/ThresholdUnitToggle";
+import {
+  formatBaseUnits,
+  type QuantityEntryMode,
+  usesStockUnit,
+} from "@/lib/products/productUnits";
 import type { Brand, Product, Warehouse } from "@/types/master";
 import type { ReportFilters, ReportResult, ReportType } from "@/types/reports";
 
@@ -49,10 +55,13 @@ const COLUMN_MAP: Record<ReportType, string[]> = {
   "sales-brand": ["brand", "totalQuantity", "saleCount"],
 };
 
-const REPORT_TYPES_WITH_DATES: ReportType[] = [
+const REPORT_TYPES_WITH_DEFAULT_DATES: ReportType[] = [
   "stock-in",
   "stock-out",
   "transfers",
+];
+
+const SALES_REPORT_TYPES: ReportType[] = [
   "sales-client",
   "sales-invoice",
   "sales-brand",
@@ -86,18 +95,39 @@ function filtersForApi(filters: ReportFilters): ReportFilters {
   const next = { ...filters };
   if (next.dateFrom?.length === 10) {
     next.dateFrom = dateInputToIso(next.dateFrom, false);
+  } else {
+    delete next.dateFrom;
   }
   if (next.dateTo?.length === 10) {
     next.dateTo = dateInputToIso(next.dateTo, true);
+  } else {
+    delete next.dateTo;
   }
   return next;
+}
+
+function handleReportTypeChange(
+  next: ReportType,
+  setReportType: (type: ReportType) => void,
+  setFilters: Dispatch<SetStateAction<ReportFilters>>
+) {
+  setReportType(next);
+  setFilters((prev) => {
+    const updated = { ...prev };
+    if (SALES_REPORT_TYPES.includes(next) || next === "stock") {
+      delete updated.dateFrom;
+      delete updated.dateTo;
+    } else if (REPORT_TYPES_WITH_DEFAULT_DATES.includes(next)) {
+      Object.assign(updated, getLast30DaysRange());
+    }
+    return updated;
+  });
 }
 
 export default function AdminReportsPage() {
   const [reportType, setReportType] = useState<ReportType>("stock");
   const [filters, setFilters] = useState<ReportFilters>(() => ({
     groupBy: "detail",
-    ...getLast30DaysRange(),
   }));
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -106,6 +136,7 @@ export default function AdminReportsPage() {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
+  const [quantityMode, setQuantityMode] = useState<QuantityEntryMode>("stockUnit");
 
   useEffect(() => {
     Promise.all([api.warehouses.list(true), api.brands.list()]).then(([w, b]) => {
@@ -156,14 +187,17 @@ export default function AdminReportsPage() {
 
   const columns = getColumns(reportType, result);
   const numericCols = numericColumns(columns, result);
+  const showQuantityToggle = reportHasStockUnitRows(result, columns);
+  const quantityToggleProduct = findToggleProduct(result, columns);
 
   return (
     <div className="space-y-6 text-zinc-900">
       <div>
         <h1 className="text-2xl font-semibold text-zinc-900">Reports</h1>
         <p className="mt-1 text-sm text-zinc-600">
-          The table updates automatically when you change filters. Default range is
-          the last 30 days (not applied to Current stock).
+          The table updates automatically when you change filters. Stock In, Stock Out,
+          and Transfers default to the last 30 days. Sales reports show all invoices
+          until you set a date range.
         </p>
       </div>
 
@@ -171,7 +205,7 @@ export default function AdminReportsPage() {
         <ButtonSelect
           label="Report type"
           value={reportType}
-          onChange={(v) => setReportType(v as ReportType)}
+          onChange={(v) => handleReportTypeChange(v as ReportType, setReportType, setFilters)}
           options={REPORT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
         />
 
@@ -288,12 +322,29 @@ export default function AdminReportsPage() {
               className="form-date mt-1"
             />
           </div>
-          {REPORT_TYPES_WITH_DATES.includes(reportType) && (
+          {REPORT_TYPES_WITH_DEFAULT_DATES.includes(reportType) &&
+          filters.dateFrom &&
+          filters.dateTo ? (
             <p className="w-full text-xs text-zinc-500">
-              Showing data from {filters.dateFrom?.slice(0, 10) ?? "—"} to{" "}
-              {filters.dateTo?.slice(0, 10) ?? "—"}
+              Showing data from {filters.dateFrom.slice(0, 10)} to{" "}
+              {filters.dateTo.slice(0, 10)}
             </p>
-          )}
+          ) : null}
+          {SALES_REPORT_TYPES.includes(reportType) &&
+          !filters.dateFrom &&
+          !filters.dateTo ? (
+            <p className="w-full text-xs text-zinc-500">
+              Showing all sales. Set From/To dates to narrow the range.
+            </p>
+          ) : null}
+          {SALES_REPORT_TYPES.includes(reportType) &&
+          filters.dateFrom &&
+          filters.dateTo ? (
+            <p className="w-full text-xs text-zinc-500">
+              Showing sales from {filters.dateFrom.slice(0, 10)} to{" "}
+              {filters.dateTo.slice(0, 10)}
+            </p>
+          ) : null}
         </div>
 
         <div className="flex items-center justify-end">
@@ -338,7 +389,19 @@ export default function AdminReportsPage() {
                         numericCols.has(col) ? "text-right" : "text-left"
                       }`}
                     >
-                      {formatHeader(col)}
+                      {QUANTITY_COLUMNS.has(col) && showQuantityToggle ? (
+                        <div className="flex flex-col items-end gap-2">
+                          <span>{formatHeader(col)}</span>
+                          <ThresholdUnitToggle
+                            mode={quantityMode}
+                            onModeChange={setQuantityMode}
+                            product={quantityToggleProduct}
+                            size="sm"
+                          />
+                        </div>
+                      ) : (
+                        formatHeader(col)
+                      )}
                     </th>
                   ))}
                 </tr>
@@ -361,11 +424,17 @@ export default function AdminReportsPage() {
                     >
                       {columns.map((col, colIndex) => {
                         const unitsPer = Number(row.unitsPerStockUnit);
+                        const rowProduct = {
+                          stockUnit:
+                            typeof row.stockUnit === "string" ? row.stockUnit : undefined,
+                          unitsPerStockUnit: Number.isFinite(unitsPer) ? unitsPer : undefined,
+                          baseUnit:
+                            typeof row.baseUnit === "string" ? row.baseUnit : undefined,
+                        };
                         const showStockUnits =
                           QUANTITY_COLUMNS.has(col) &&
                           typeof row[col] === "number" &&
-                          Number.isFinite(unitsPer) &&
-                          unitsPer > 1;
+                          usesStockUnit(rowProduct);
                         return (
                           <td
                             key={col}
@@ -378,20 +447,20 @@ export default function AdminReportsPage() {
                             }`}
                           >
                             {showStockUnits ? (
-                              <StockQuantityDisplay
-                                quantity={row[col] as number}
-                                stockUnit={
-                                  typeof row.stockUnit === "string"
-                                    ? row.stockUnit
-                                    : undefined
-                                }
-                                unitsPerStockUnit={unitsPer}
-                                baseUnit={
-                                  typeof row.baseUnit === "string" ? row.baseUnit : undefined
-                                }
-                                size="sm"
-                                align="right"
-                              />
+                              quantityMode === "units" ? (
+                                <span className="whitespace-nowrap">
+                                  {formatBaseUnits(row[col] as number, rowProduct)}
+                                </span>
+                              ) : (
+                                <StockQuantityDisplay
+                                  quantity={row[col] as number}
+                                  stockUnit={rowProduct.stockUnit}
+                                  unitsPerStockUnit={rowProduct.unitsPerStockUnit}
+                                  baseUnit={rowProduct.baseUnit}
+                                  size="sm"
+                                  align="right"
+                                />
+                              )
                             ) : (
                               formatCell(row[col])
                             )}
@@ -448,6 +517,49 @@ function formatCell(value: unknown): string {
     return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString();
   }
   return String(value);
+}
+
+function rowProductUnits(row: Record<string, unknown>) {
+  const unitsPer = Number(row.unitsPerStockUnit);
+  return {
+    stockUnit: typeof row.stockUnit === "string" ? row.stockUnit : undefined,
+    unitsPerStockUnit: Number.isFinite(unitsPer) ? unitsPer : undefined,
+    baseUnit: typeof row.baseUnit === "string" ? row.baseUnit : undefined,
+  };
+}
+
+function reportHasStockUnitRows(
+  result: ReportResult | null,
+  columns: string[]
+): boolean {
+  if (!result?.rows.length) return false;
+  return result.rows.some((row) =>
+    columns.some(
+      (col) =>
+        QUANTITY_COLUMNS.has(col) &&
+        typeof row[col] === "number" &&
+        usesStockUnit(rowProductUnits(row))
+    )
+  );
+}
+
+function findToggleProduct(
+  result: ReportResult | null,
+  columns: string[]
+): ReturnType<typeof rowProductUnits> | null {
+  if (!result?.rows.length) return null;
+  for (const row of result.rows) {
+    for (const col of columns) {
+      if (
+        QUANTITY_COLUMNS.has(col) &&
+        typeof row[col] === "number" &&
+        usesStockUnit(rowProductUnits(row))
+      ) {
+        return rowProductUnits(row);
+      }
+    }
+  }
+  return null;
 }
 
 function FilterSelect({

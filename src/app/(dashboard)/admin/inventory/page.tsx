@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
@@ -39,7 +40,10 @@ import {
 } from "@/lib/products/productUnits";
 import { ThresholdUnitToggle } from "@/components/products/ThresholdUnitToggle";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
+import { SearchInputWithSuggestions } from "@/components/search/SearchInputWithSuggestions";
+import { createAdminInventoryProductSuggestions } from "@/lib/search/productSearchSuggestions";
 import type {
+  LowStockProductRow,
   LowStockResponse,
   StockLocationLastChange,
   StockProductRow,
@@ -81,14 +85,15 @@ const LOW_STOCK_SORT_OPTIONS: { value: LowStockSortField; label: string }[] = [
   { value: "lowStockThreshold", label: "Threshold" },
 ];
 
-export default function AdminInventoryPage() {
+function AdminInventoryPageContent() {
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<Tab>("stock");
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [warehouseId, setWarehouseId] = useState("");
   const [brandId, setBrandId] = useState("");
   const [movementType, setMovementType] = useState("");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
   const [stock, setStock] = useState<StockResponse | null>(null);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [lowStock, setLowStock] = useState<LowStockResponse | null>(null);
@@ -99,8 +104,15 @@ export default function AdminInventoryPage() {
   const [success, setSuccess] = useState("");
   const [sortBy, setSortBy] = useState<string>("updatedAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [lowStockQuantityMode, setLowStockQuantityMode] =
+    useState<QuantityEntryMode>("stockUnit");
 
   const { page, setPage, limit, setLimit, resetPage } = usePagination(20);
+
+  const fetchProductSuggestions = useMemo(
+    () => createAdminInventoryProductSuggestions(warehouseId || undefined),
+    [warehouseId]
+  );
 
   useEffect(() => {
     setFilterError("");
@@ -227,15 +239,21 @@ export default function AdminInventoryPage() {
 
       <div className="flex flex-wrap gap-3 rounded-xl border border-zinc-200/80 bg-white p-4 shadow-sm">
         <FilterField label="Search">
-          <input
-            type="search"
+          <SearchInputWithSuggestions
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
+            onChange={(value) => {
+              setSearch(value);
               resetPage();
             }}
+            onSelect={(suggestion) => {
+              setSearch(suggestion.searchTerm);
+              resetPage();
+            }}
+            fetchSuggestions={fetchProductSuggestions}
             placeholder="Product, brand, warehouse…"
-            className="w-full min-w-[200px] rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+            ariaLabel="Search inventory"
+            inputClassName="w-full min-w-[200px] rounded-lg border border-zinc-200 bg-white px-3 py-1.5 pl-10 text-sm shadow-sm focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+            emptyMessage={(term) => `No products match “${term}”`}
           />
         </FilterField>
         <FilterSelect
@@ -289,6 +307,21 @@ export default function AdminInventoryPage() {
             { value: "desc", label: "Descending" },
           ]}
         />
+        {tab === "low-stock" ? (
+          <div className="flex min-w-[12rem] flex-col gap-1">
+            <span className="text-xs font-medium text-zinc-500">Quantities in</span>
+            <ThresholdUnitToggle
+              mode={lowStockQuantityMode}
+              onModeChange={setLowStockQuantityMode}
+              product={
+                lowStock?.items.find((item) => usesStockUnit(item)) ??
+                lowStock?.items[0] ??
+                null
+              }
+              size="sm"
+            />
+          </div>
+        ) : null}
       </div>
 
       <Alert message={error} />
@@ -310,8 +343,17 @@ export default function AdminInventoryPage() {
         />
       ) : tab === "movements" ? (
         <MovementsView movements={movements} />
-      ) : tab === "low-stock" && lowStock ? (
-        <LowStockView data={lowStock} warehouseFilter={warehouseId} />
+      ) : tab === "low-stock" ? (
+        <LowStockView
+          data={
+            lowStock ?? {
+              count: 0,
+              warehouses: [],
+              items: [],
+            }
+          }
+          quantityMode={lowStockQuantityMode}
+        />
       ) : null}
 
       {pagination && !loading && (
@@ -529,7 +571,7 @@ function StockView({
                     colSpan={warehouseColumns.length * 2 + 3}
                     className="px-5 py-10 text-center text-base font-medium text-stone-400"
                   >
-                    No stock on hand
+                    No products found
                   </td>
                 </tr>
               ) : (
@@ -655,7 +697,7 @@ function StockView({
       <div className="space-y-3 md:hidden">
         {products.length === 0 ? (
           <div className="rounded-2xl border border-stone-200 bg-white px-5 py-10 text-center text-base font-medium text-stone-400">
-            No stock on hand
+                    No products found
           </div>
         ) : (
           products.map((product) => {
@@ -1096,6 +1138,15 @@ function AdjustStockDialog({
 }
 
 function MovementsView({ movements }: { movements: StockMovement[] }) {
+  const [quantityMode, setQuantityMode] = useState<QuantityEntryMode>("stockUnit");
+
+  const toggleProduct = useMemo(() => {
+    const movement = movements.find((item) => usesStockUnit(item.product));
+    return movement?.product ?? null;
+  }, [movements]);
+
+  const showQuantityToggle = movements.some((item) => usesStockUnit(item.product));
+
   return (
     <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm">
       <DataTable>
@@ -1107,7 +1158,19 @@ function MovementsView({ movements }: { movements: StockMovement[] }) {
           <DataTableTh>Brand</DataTableTh>
           <DataTableTh>Warehouse</DataTableTh>
           <DataTableTh>Details</DataTableTh>
-          <DataTableTh align="right">Qty</DataTableTh>
+          <DataTableTh align="right">
+            <div className="flex flex-col items-end gap-2">
+              <span>Qty</span>
+              {showQuantityToggle ? (
+                <ThresholdUnitToggle
+                  mode={quantityMode}
+                  onModeChange={setQuantityMode}
+                  product={toggleProduct}
+                  size="sm"
+                />
+              ) : null}
+            </div>
+          </DataTableTh>
         </DataTableHead>
         <DataTableBody>
           {movements.length === 0 ? (
@@ -1149,7 +1212,20 @@ function MovementsView({ movements }: { movements: StockMovement[] }) {
                     `${m.clientName} · ${m.invoiceNumber}`}
                 </DataTableTd>
                 <DataTableTd align="right" className="font-semibold tabular-nums">
-                  {m.quantity}
+                  {quantityMode === "units" || !usesStockUnit(m.product) ? (
+                    <span className="whitespace-nowrap text-stone-900">
+                      {formatBaseUnits(m.quantity, m.product)}
+                    </span>
+                  ) : (
+                    <StockQuantityDisplay
+                      quantity={m.quantity}
+                      stockUnit={m.product?.stockUnit}
+                      unitsPerStockUnit={m.product?.unitsPerStockUnit}
+                      baseUnit={m.product?.baseUnit}
+                      size="sm"
+                      align="right"
+                    />
+                  )}
                 </DataTableTd>
               </DataTableRow>
             ))
@@ -1160,156 +1236,301 @@ function MovementsView({ movements }: { movements: StockMovement[] }) {
   );
 }
 
+function normalizeLowStockProduct(row: LowStockProductRow): Required<
+  Pick<
+    LowStockProductRow,
+    | "warehouseLow"
+    | "warehouseThreshold"
+    | "warehouseThresholdCustom"
+  >
+> &
+  LowStockProductRow {
+  const legacy = row as LowStockProductRow & {
+    warehouseId?: string;
+    quantity?: number;
+    lowStockThreshold?: number;
+    warehouseLowStockThreshold?: number;
+  };
+
+  if (
+    legacy.warehouseId &&
+    (!row.warehouseLow || Object.keys(row.warehouseLow).length === 0)
+  ) {
+    return {
+      ...row,
+      warehouseLow: {
+        [legacy.warehouseId]: legacy.quantity ?? 0,
+      },
+      warehouseThreshold:
+        legacy.lowStockThreshold != null
+          ? { [legacy.warehouseId]: legacy.lowStockThreshold }
+          : {},
+      warehouseThresholdCustom:
+        legacy.warehouseLowStockThreshold != null
+          ? { [legacy.warehouseId]: true }
+          : {},
+    };
+  }
+
+  return {
+    ...row,
+    warehouseLow: row.warehouseLow ?? {},
+    warehouseThreshold: row.warehouseThreshold ?? {},
+    warehouseThresholdCustom: row.warehouseThresholdCustom ?? {},
+  };
+}
+
+function LowStockThresholdCell({
+  threshold,
+  product,
+  mode,
+  source,
+}: {
+  threshold: number | undefined;
+  product: Pick<StockProductRow, "stockUnit" | "unitsPerStockUnit" | "baseUnit">;
+  mode: QuantityEntryMode;
+  source?: "overall" | "warehouse" | "default";
+}) {
+  if (threshold === undefined) {
+    return <span className="text-base font-medium text-stone-300">—</span>;
+  }
+
+  const unitFields = {
+    stockUnit: product.stockUnit,
+    unitsPerStockUnit: product.unitsPerStockUnit,
+    baseUnit: product.baseUnit,
+  };
+
+  const sourceLabel =
+    source === "overall"
+      ? "overall"
+      : source === "warehouse"
+        ? "warehouse"
+        : source === "default"
+          ? "default"
+          : null;
+
+  return (
+    <div className="flex flex-col items-start gap-0.5">
+      {mode === "units" || !usesStockUnit(product) ? (
+        <span className="text-sm font-medium tabular-nums text-stone-600">
+          ≤ {formatBaseUnits(threshold, unitFields)}
+        </span>
+      ) : (
+        <StockQuantityDisplay
+          quantity={threshold}
+          stockUnit={product.stockUnit}
+          unitsPerStockUnit={product.unitsPerStockUnit}
+          baseUnit={product.baseUnit}
+          size="sm"
+          align="left"
+          className="text-stone-600 [&_span:first-child]:!text-stone-600"
+        />
+      )}
+      {sourceLabel ? (
+        <span className="text-[10px] text-stone-400">{sourceLabel}</span>
+      ) : null}
+    </div>
+  );
+}
+function toLowStockProductDetail(row: LowStockProductRow): StockProductRow {
+  return {
+    productId: row.productId,
+    productName: row.productName,
+    secondaryProductName: row.secondaryProductName,
+    brandId: row.brandId,
+    brandName: row.brandName,
+    stockUnit: row.stockUnit,
+    unitsPerStockUnit: row.unitsPerStockUnit,
+    baseUnit: row.baseUnit,
+    locations: [],
+    totalQuantity: row.totalQuantity,
+    totalLowStockThreshold: row.totalLowStockThreshold ?? 0,
+  };
+}
+
+function LowStockQuantityCell({
+  quantity,
+  product,
+  mode,
+  variant = "warehouse",
+  size = "lg",
+}: {
+  quantity: number | undefined;
+  product: Pick<StockProductRow, "stockUnit" | "unitsPerStockUnit" | "baseUnit">;
+  mode: QuantityEntryMode;
+  variant?: "total" | "warehouse" | "neutral";
+  size?: "sm" | "md" | "lg";
+}) {
+  if (quantity === undefined) {
+    return <span className="text-base font-medium text-stone-300">—</span>;
+  }
+
+  const highlightClass =
+    variant === "total"
+      ? "text-orange-800 [&_span:first-child]:!text-orange-800"
+      : variant === "neutral"
+        ? "text-stone-900 [&_span:first-child]:!text-stone-900"
+        : "text-amber-800 [&_span:first-child]:!text-amber-800";
+  const plainClass =
+    variant === "total"
+      ? "text-orange-800"
+      : variant === "neutral"
+        ? "text-stone-900"
+        : "text-amber-800";
+
+  if (mode === "units" || !usesStockUnit(product)) {
+    return (
+      <span className={`text-base font-semibold tabular-nums ${plainClass}`}>
+        {formatBaseUnits(quantity, product)}
+      </span>
+    );
+  }
+
+  return (
+    <StockQuantityDisplay
+      quantity={quantity}
+      stockUnit={product.stockUnit}
+      unitsPerStockUnit={product.unitsPerStockUnit}
+      baseUnit={product.baseUnit}
+      size={size}
+      align="left"
+      className={highlightClass}
+    />
+  );
+}
+
 function LowStockView({
   data,
-  warehouseFilter,
+  quantityMode,
 }: {
   data: LowStockResponse;
-  warehouseFilter?: string;
+  quantityMode: QuantityEntryMode;
 }) {
-  return (
-    <div className="space-y-8">
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-base font-semibold text-zinc-900">By warehouse</h2>
-          <p className="mt-1 text-sm text-zinc-600">
-            Each location uses its own threshold (or the product default).{" "}
-            <strong>{data.count}</strong> warehouse rows match.
-            {warehouseFilter ? (
-              <span className="block text-xs text-zinc-500">
-                Filtered to one warehouse — totals below still combine all locations.
-              </span>
-            ) : null}
-          </p>
-        </div>
-        <div className="overflow-hidden rounded-2xl border border-amber-200/80 bg-amber-50/30 shadow-sm">
-          <DataTable>
-            <DataTableHead>
-              <DataTableTh>Warehouse</DataTableTh>
-              <DataTableTh>Primary name</DataTableTh>
-              <DataTableTh>Secondary name</DataTableTh>
-              <DataTableTh>Brand</DataTableTh>
-              <DataTableTh align="right">Threshold</DataTableTh>
-              <DataTableTh align="right">Quantity</DataTableTh>
-            </DataTableHead>
-            <DataTableBody>
-              {data.items.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-zinc-600">
-                    No warehouse-level low stock. Set thresholds on each product or per
-                    warehouse in item history.
-                  </td>
-                </tr>
-              ) : (
-                data.items.map((r) => (
-                  <DataTableRow key={`${r.warehouseId}-${r.productId}`}>
-                    <DataTableTd>
-                      {r.warehouseName} ({r.warehouseCode})
-                    </DataTableTd>
-                    <DataTableTd className="font-medium">{r.productName}</DataTableTd>
-                    <DataTableTd className="text-zinc-600">
-                      {formatSecondaryName(r.secondaryProductName)}
-                    </DataTableTd>
-                    <DataTableTd>{r.brandName}</DataTableTd>
-                    <DataTableTd align="right" className="text-zinc-600">
-                      {r.lowStockThreshold != null ? (
-                        <span className="inline-flex flex-col items-end gap-0.5">
-                          <StockQuantityDisplay
-                            quantity={r.lowStockThreshold}
-                            stockUnit={r.stockUnit}
-                            unitsPerStockUnit={r.unitsPerStockUnit}
-                            baseUnit={r.baseUnit}
-                            size="sm"
-                            align="right"
-                          />
-                          {r.warehouseLowStockThreshold != null ? (
-                            <span className="text-[10px] text-amber-700">warehouse</span>
-                          ) : (
-                            <span className="text-[10px] text-zinc-400">default</span>
-                          )}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </DataTableTd>
-                    <DataTableTd align="right" className="font-semibold text-amber-800">
-                      <StockQuantityDisplay
-                        quantity={r.quantity}
-                        stockUnit={r.stockUnit}
-                        unitsPerStockUnit={r.unitsPerStockUnit}
-                        size="md"
-                        align="right"
-                        className="text-amber-800 [&_span:first-child]:!text-amber-800"
-                      />
-                    </DataTableTd>
-                  </DataTableRow>
-                ))
-              )}
-            </DataTableBody>
-          </DataTable>
-        </div>
-      </section>
+  const warehouseColumns = data.warehouses ?? [];
+  const products = data.items ?? [];
 
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-base font-semibold text-zinc-900">Total across warehouses</h2>
-          <p className="mt-1 text-sm text-zinc-600">
-            Sum of stock vs sum of per-warehouse thresholds.{" "}
-            <strong>{data.totalCount}</strong> products are low in total.
-          </p>
-        </div>
-        <div className="overflow-hidden rounded-2xl border border-orange-200/80 bg-orange-50/20 shadow-sm">
-          <DataTable>
-            <DataTableHead>
-              <DataTableTh>Primary name</DataTableTh>
-              <DataTableTh>Secondary name</DataTableTh>
-              <DataTableTh>Brand</DataTableTh>
-              <DataTableTh align="right">Total threshold</DataTableTh>
-              <DataTableTh align="right">Total quantity</DataTableTh>
-            </DataTableHead>
-            <DataTableBody>
-              {data.totals.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-zinc-600">
-                    No products are below their combined warehouse thresholds.
-                  </td>
-                </tr>
-              ) : (
-                data.totals.map((r) => (
-                  <DataTableRow key={r.productId}>
-                    <DataTableTd className="font-medium">{r.productName}</DataTableTd>
-                    <DataTableTd className="text-zinc-600">
-                      {formatSecondaryName(r.secondaryProductName)}
-                    </DataTableTd>
-                    <DataTableTd>{r.brandName}</DataTableTd>
-                    <DataTableTd align="right" className="text-zinc-600">
-                      <StockQuantityDisplay
-                        quantity={r.totalLowStockThreshold}
-                        stockUnit={r.stockUnit}
-                        unitsPerStockUnit={r.unitsPerStockUnit}
-                        baseUnit={r.baseUnit}
-                        size="sm"
-                        align="right"
+  return (
+    <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-stone-200 bg-orange-50 text-xs font-bold uppercase tracking-wide text-orange-800">
+              <th className="sticky left-0 z-10 bg-orange-50 px-4 py-3.5 text-left align-bottom">
+                Product detail
+              </th>
+              <th className="px-4 py-3.5 text-left align-bottom">Total low</th>
+              <th className="px-4 py-3.5 text-left align-bottom">Total threshold</th>
+              {warehouseColumns.map((wh) => (
+                <Fragment key={wh.warehouseId}>
+                  <th className="px-4 py-3.5 text-left align-bottom">
+                    <StackedHeader text={wh.name} className="font-bold" />
+                  </th>
+                  <th className="px-4 py-3.5 text-left align-bottom">
+                    <div className="whitespace-nowrap font-bold">Threshold</div>
+                    <div className="mt-0.5 whitespace-nowrap text-[10px] font-semibold normal-case tracking-normal text-orange-600/80">
+                      {wh.name}
+                    </div>
+                  </th>
+                </Fragment>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {products.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={warehouseColumns.length * 2 + 3}
+                  className="px-5 py-10 text-center text-base font-medium text-stone-400"
+                >
+                  No low stock. Set thresholds on each product or per warehouse in item
+                  history.
+                </td>
+              </tr>
+            ) : (
+              products.map((productRow, index) => {
+                const product = normalizeLowStockProduct(productRow);
+                const detailProduct = toLowStockProductDetail(product);
+                const lowWarehouseIds = Object.keys(product.warehouseLow);
+                const detailLinkWarehouseId = lowWarehouseIds[0];
+                return (
+                  <tr
+                    key={product.productId}
+                    className={`border-t border-stone-100 transition-colors hover:bg-orange-50/50 ${
+                      index % 2 === 0 ? "bg-white" : "bg-stone-50/40"
+                    }`}
+                  >
+                    <td className="sticky left-0 z-10 bg-inherit px-4 py-3.5 align-top">
+                      <ProductDetailCell
+                        product={detailProduct}
+                        linkWarehouseId={detailLinkWarehouseId}
                       />
-                    </DataTableTd>
-                    <DataTableTd align="right" className="font-semibold text-orange-800">
-                      <StockQuantityDisplay
-                        quantity={r.totalQuantity}
-                        stockUnit={r.stockUnit}
-                        unitsPerStockUnit={r.unitsPerStockUnit}
-                        baseUnit={r.baseUnit}
+                    </td>
+                    <td className="px-4 py-3.5 text-left">
+                      <LowStockQuantityCell
+                        quantity={product.totalQuantity}
+                        product={detailProduct}
+                        mode={quantityMode}
+                        variant={product.isTotalLow ? "total" : "neutral"}
                         size="md"
-                        align="right"
-                        className="text-orange-800 [&_span:first-child]:!text-orange-800"
                       />
-                    </DataTableTd>
-                  </DataTableRow>
-                ))
-              )}
-            </DataTableBody>
-          </DataTable>
-        </div>
-      </section>
+                    </td>
+                    <td className="px-4 py-3.5 text-left">
+                      <LowStockThresholdCell
+                        threshold={product.totalLowStockThreshold}
+                        product={detailProduct}
+                        mode={quantityMode}
+                        source={
+                          product.totalLowStockThreshold != null ? "overall" : undefined
+                        }
+                      />
+                    </td>
+                    {warehouseColumns.map((wh) => (
+                      <Fragment key={wh.warehouseId}>
+                        <td className="px-4 py-3.5 text-left">
+                          <LowStockQuantityCell
+                            quantity={product.warehouseLow[wh.warehouseId]}
+                            product={detailProduct}
+                            mode={quantityMode}
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 text-left">
+                          <LowStockThresholdCell
+                            threshold={product.warehouseThreshold[wh.warehouseId]}
+                            product={detailProduct}
+                            mode={quantityMode}
+                            source={
+                              product.warehouseThreshold[wh.warehouseId] != null
+                                ? product.warehouseThresholdCustom[wh.warehouseId]
+                                  ? "warehouse"
+                                  : "default"
+                                : undefined
+                            }
+                          />
+                        </td>
+                      </Fragment>
+                    ))}
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
+  );
+}
+
+export default function AdminInventoryPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex justify-center py-16">
+          <LoadingSpinner label="Loading inventory…" />
+        </div>
+      }
+    >
+      <AdminInventoryPageContent />
+    </Suspense>
   );
 }

@@ -43,6 +43,15 @@ export function buildAppNavGroups(
   }
   if (
     hasAnyPermission(role, permissions, [
+      Permission.STOCK_IN,
+      Permission.TRANSFERS_RECEIVE,
+      Permission.TRANSFERS_VIEW,
+    ])
+  ) {
+    mainMenu.push({ href: AUTH_ROUTES.appReturn, label: "Return" });
+  }
+  if (
+    hasAnyPermission(role, permissions, [
       Permission.STOCK_VIEW,
       Permission.INVENTORY_VIEW,
     ])

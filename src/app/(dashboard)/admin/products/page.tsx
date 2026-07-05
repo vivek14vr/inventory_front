@@ -20,10 +20,13 @@ import {
   usesStockUnit,
 } from "@/lib/products/productUnits";
 import { ThresholdUnitToggle } from "@/components/products/ThresholdUnitToggle";
+import { SearchInputWithSuggestions } from "@/components/search/SearchInputWithSuggestions";
+import { createAdminProductsPageSuggestions } from "@/lib/search/productSearchSuggestions";
 import {
   ProductWarehouseThresholds,
   buildWarehouseThresholdPayload,
 } from "@/components/products/ProductWarehouseThresholds";
+import { DEFAULT_LOW_STOCK_STOCK_UNITS } from "@/lib/inventory/lowStockDefaults";
 
 const emptyForm = {
   name: "",
@@ -32,7 +35,7 @@ const emptyForm = {
   baseUnit: "piece",
   stockUnit: "",
   unitsPerStockUnit: "1",
-  lowStockThreshold: "",
+  totalLowStockThreshold: "",
   editId: null as string | null,
 };
 
@@ -58,6 +61,11 @@ export default function AdminProductsPage() {
   const [listThresholdMode, setListThresholdMode] = useState<QuantityEntryMode>("units");
   const { page, setPage, limit, setLimit, resetPage } = usePagination(20);
 
+  const fetchProductSuggestions = useMemo(
+    () => createAdminProductsPageSuggestions(filterBrandId || undefined),
+    [filterBrandId]
+  );
+
   const perPack = parseInt(form.unitsPerStockUnit, 10) || 1;
   const formBaseUnit = form.baseUnit.trim() || "piece";
   const formStockUnit = perPack > 1 ? form.stockUnit.trim() || "unit" : formBaseUnit;
@@ -69,9 +77,11 @@ export default function AdminProductsPage() {
     }),
     [formBaseUnit, formStockUnit, perPack]
   );
-  const defaultThresholdPreview = formatThresholdPreview(
+  const totalThresholdPreview = formatThresholdPreview(
     thresholdBaseToDisplay(
-      form.lowStockThreshold.trim() ? parseInt(form.lowStockThreshold, 10) : null,
+      form.totalLowStockThreshold.trim()
+        ? parseInt(form.totalLowStockThreshold, 10)
+        : null,
       thresholdMode,
       productUnits
     ),
@@ -133,16 +143,16 @@ export default function AdminProductsPage() {
         baseUnit,
         stockUnit,
         unitsPerStockUnit: per,
-        lowStockThreshold: form.lowStockThreshold.trim()
-          ? parseInt(form.lowStockThreshold, 10)
+        totalLowStockThreshold: form.totalLowStockThreshold.trim()
+          ? parseInt(form.totalLowStockThreshold, 10)
           : undefined,
       };
       if (form.editId) {
         await api.products.update(form.editId, {
           ...payload,
           secondaryName: form.secondaryName.trim() || null,
-          lowStockThreshold: form.lowStockThreshold.trim()
-            ? parseInt(form.lowStockThreshold, 10)
+          totalLowStockThreshold: form.totalLowStockThreshold.trim()
+            ? parseInt(form.totalLowStockThreshold, 10)
             : null,
         });
         const thresholds = buildWarehouseThresholdPayload(
@@ -197,23 +207,31 @@ export default function AdminProductsPage() {
       <div>
         <h1 className="text-2xl font-semibold text-zinc-900">Products</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Primary name + brand must be unique (case-insensitive). Set a default low-stock
-          level, then optional different values for each warehouse below.
+          Primary name + brand must be unique (case-insensitive). Set an overall total
+          low-stock alert, then independent alerts for each warehouse below. Blank values
+          default to {DEFAULT_LOW_STOCK_STOCK_UNITS} cartons.
         </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-4 justify-between">
         <div>
           <label className="text-sm font-medium text-zinc-700">Search</label>
-          <input
-            type="search"
+          <SearchInputWithSuggestions
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
+            onChange={(value) => {
+              setSearch(value);
               resetPage();
             }}
+            onSelect={(suggestion) => {
+              setSearch(suggestion.searchTerm);
+              resetPage();
+            }}
+            fetchSuggestions={fetchProductSuggestions}
             placeholder="Product name…"
-            className="ml-2 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm"
+            ariaLabel="Search products"
+            wrapperClassName="ml-2 inline-block min-w-[220px]"
+            inputClassName="w-full rounded-lg border border-zinc-300 px-3 py-1.5 pl-10 text-sm"
+            emptyMessage={(term) => `No products match “${term}”`}
           />
         </div>
         <ButtonSelect
@@ -333,15 +351,15 @@ export default function AdminProductsPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-zinc-700">
-                Default low stock (fallback)
+                Total low stock
               </label>
               <input
                 type="number"
                 min={0}
                 step={thresholdMode === "stockUnit" && usesStockUnit(productUnits) ? "any" : 1}
                 value={thresholdBaseToDisplay(
-                  form.lowStockThreshold.trim()
-                    ? parseInt(form.lowStockThreshold, 10)
+                  form.totalLowStockThreshold.trim()
+                    ? parseInt(form.totalLowStockThreshold, 10)
                     : null,
                   thresholdMode,
                   productUnits
@@ -354,17 +372,18 @@ export default function AdminProductsPage() {
                   );
                   setForm({
                     ...form,
-                    lowStockThreshold: nextBase != null ? String(nextBase) : "",
+                    totalLowStockThreshold: nextBase != null ? String(nextBase) : "",
                   });
                 }}
                 className="form-input mt-1"
-                placeholder="e.g. 50"
+                placeholder={`e.g. ${DEFAULT_LOW_STOCK_STOCK_UNITS}`}
               />
-              {defaultThresholdPreview ? (
-                <p className="mt-1 text-xs font-medium text-zinc-500">{defaultThresholdPreview}</p>
+              {totalThresholdPreview ? (
+                <p className="mt-1 text-xs font-medium text-zinc-500">{totalThresholdPreview}</p>
               ) : (
                 <p className="mt-1 text-xs text-zinc-500">
-                  Used when a warehouse has no custom alert below
+                  Combined alert across all warehouses. Defaults to{" "}
+                  {DEFAULT_LOW_STOCK_STOCK_UNITS} cartons if left blank.
                 </p>
               )}
             </div>
@@ -383,11 +402,6 @@ export default function AdminProductsPage() {
           <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-4">
             <ProductWarehouseThresholds
               productId={form.editId}
-              productDefault={
-                form.lowStockThreshold.trim()
-                  ? parseInt(form.lowStockThreshold, 10)
-                  : null
-              }
               baseUnit={formBaseUnit}
               stockUnit={formStockUnit}
               unitsPerStockUnit={perPack}
@@ -472,8 +486,10 @@ export default function AdminProductsPage() {
                           baseUnit: p.baseUnit ?? "piece",
                           stockUnit: p.unitsPerStockUnit > 1 ? p.stockUnit : "",
                           unitsPerStockUnit: String(p.unitsPerStockUnit),
-                          lowStockThreshold:
-                            p.lowStockThreshold != null ? String(p.lowStockThreshold) : "",
+                          totalLowStockThreshold:
+                            p.totalLowStockThreshold != null
+                              ? String(p.totalLowStockThreshold)
+                              : "",
                           editId: p.id,
                         });
                         setWarehouseThresholds({});
@@ -518,21 +534,21 @@ function ProductLowStockCell({
   mode: QuantityEntryMode;
 }) {
   const overrides = product.warehouseLowStockOverrides ?? [];
-  const hasDefault = product.lowStockThreshold != null;
+  const hasTotal = product.totalLowStockThreshold != null;
 
-  if (!hasDefault && overrides.length === 0) {
+  if (!hasTotal && overrides.length === 0) {
     return <span className="text-zinc-400">—</span>;
   }
 
   return (
     <div className="space-y-1">
-      {hasDefault ? (
+      {hasTotal ? (
         <div>
           <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
-            Default
+            Total
           </span>{" "}
           <span className="text-zinc-700">
-            ≤ {formatListLowStockThreshold(product.lowStockThreshold!, mode, product)}
+            ≤ {formatListLowStockThreshold(product.totalLowStockThreshold!, mode, product)}
           </span>
         </div>
       ) : null}

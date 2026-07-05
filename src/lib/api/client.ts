@@ -5,6 +5,7 @@ import type { AuthUser, LoginResponse, PublicUser } from "@/types/auth";
 import type { Brand, Product, ProductWarehouseThreshold, Warehouse } from "@/types/master";
 import type {
   AdminDashboard,
+  LowStockProductRow,
   LowStockResponse,
   StockItemDetailResponse,
   StockItemLedgerRow,
@@ -263,6 +264,7 @@ export const api = {
       unitsPerStockUnit?: number;
       baseUnit?: string;
       lowStockThreshold?: number;
+      totalLowStockThreshold?: number;
       isActive?: boolean;
     }) =>
       apiClient<Product>("/products", {
@@ -279,6 +281,7 @@ export const api = {
         unitsPerStockUnit: number;
         baseUnit?: string;
         lowStockThreshold: number | null;
+        totalLowStockThreshold: number | null;
         isActive: boolean;
       }>
     ) =>
@@ -307,11 +310,22 @@ export const api = {
     balances: (
       params?: PaginationParams & {
         warehouseId?: string;
+        brandId?: string;
         productId?: string;
         search?: string;
         sortBy?: string;
       }
     ) => apiClientPaginated<InventoryBalance>("/stock/balances", params),
+    productAvailability: (params: { warehouseId: string; brandId: string }) =>
+      apiClient<
+        Array<{
+          productId: string;
+          quantity: number;
+          stockUnit: string;
+          unitsPerStockUnit: number;
+          baseUnit: string;
+        }>
+      >(`/stock/availability?warehouseId=${encodeURIComponent(params.warehouseId)}&brandId=${encodeURIComponent(params.brandId)}`),
     movements: () => apiClient<StockMovement[]>("/stock/movements"),
     stockIn: (data: {
       warehouseId?: string;
@@ -342,6 +356,19 @@ export const api = {
         "/stock/out",
         { method: "POST", body: JSON.stringify(data) }
       ),
+    stockOutBatch: (data: {
+      warehouseId?: string;
+      clientName: string;
+      invoiceNumber?: string;
+      notes?: string;
+      items: Array<{ brandId: string; productId: string; quantity: number }>;
+    }) =>
+      apiClient<{
+        movements: StockMovement[];
+        balances: Record<string, number>;
+        invoiceNumber?: string;
+        clientName: string;
+      }>("/stock/out/batch", { method: "POST", body: JSON.stringify(data) }),
   },
 
   inventory: {
@@ -380,7 +407,7 @@ export const api = {
         sortOrder?: "asc" | "desc";
       }
     ) =>
-      apiClientPaginatedData<LowStockResponse["items"][number], LowStockResponse>(
+      apiClientPaginatedData<LowStockProductRow, LowStockResponse>(
         "/inventory/low-stock",
         params
       ),
@@ -428,6 +455,17 @@ export const api = {
       }),
     listInvoices: (params?: PaginationParams & { search?: string }) =>
       apiClientPaginated<StockMovement>("/inventory/invoices", params),
+    listInvoiceGroups: (
+      params?: PaginationParams & {
+        search?: string;
+        sortBy?: string;
+        sortOrder?: "asc" | "desc";
+      }
+    ) =>
+      apiClientPaginated<import("@/types/stock").InvoiceGroup>(
+        "/inventory/invoices/grouped",
+        params
+      ),
     searchInvoices: (params: PaginationParams & { search: string }) =>
       apiClientPaginated<StockMovement>("/inventory/invoices/search", params),
     updateMovementInvoice: (
@@ -758,6 +796,50 @@ export const api = {
       apiClient<PublicUser>(`/users/${id}`, {
         method: "PATCH",
         body: JSON.stringify(data),
+      }),
+  },
+
+  search: {
+    productSuggestions: (params: {
+      search: string;
+      limit?: number;
+      brandId?: string;
+      warehouseId?: string;
+      includeInactive?: boolean;
+    }) =>
+      apiClient<{
+        items: Array<{
+          productId: string;
+          productName: string;
+          secondaryProductName?: string;
+          brandId: string;
+          brandName: string;
+          quantity: number;
+          quantityScope: "total" | "warehouse";
+        }>;
+      }>("/search/products", {
+        params: {
+          search: params.search,
+          ...(params.limit != null ? { limit: String(params.limit) } : {}),
+          ...(params.brandId ? { brandId: params.brandId } : {}),
+          ...(params.warehouseId ? { warehouseId: params.warehouseId } : {}),
+          ...(params.includeInactive ? { includeInactive: "true" } : {}),
+        },
+      }),
+    invoiceSuggestions: (params: { search: string; limit?: number }) =>
+      apiClient<{
+        items: Array<{
+          id: string;
+          kind: "invoice" | "client" | "product";
+          title: string;
+          subtitle?: string;
+          searchTerm: string;
+        }>;
+      }>("/search/invoices", {
+        params: {
+          search: params.search,
+          ...(params.limit != null ? { limit: String(params.limit) } : {}),
+        },
       }),
   },
 };

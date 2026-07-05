@@ -255,10 +255,11 @@ export function ProductImportPanel() {
             </tbody>
           </table>
           <p className="border-t border-emerald-200 px-4 py-2 text-xs text-emerald-900/80">
-            Use either cartons or units for each total and warehouse column — fill only one
-            side of each pair. <strong>Total low quantity</strong> is the combined alert
-            across all warehouses (e.g. 50 total even when Goregaon is 10 and Vasai is 30).
-            Warehouse names in headers must match active warehouses (e.g. Goregaon, Vasai).
+            Three independent low-stock alerts per product: <strong>total low quantity</strong>{" "}
+            (overall), plus one column pair per warehouse (e.g. Goregaon, Vasai). Use
+            either cartons or units for each — fill only one side of each pair. Blank
+            values default to 10 cartons. Legacy column <strong>low quantity cartoon</strong>{" "}
+            also maps to total low.
           </p>
         </div>
 
@@ -532,12 +533,11 @@ function ImportReviewTable({
                           lowStockThreshold: row.totalLowStockThreshold,
                         })}
                       </div>
-                    ) : null}
-                    {row.lowStockThreshold != null ? (
-                      <div className="text-xs text-zinc-500">
-                        Default: {formatLowStockImportSummary(row)}
+                    ) : (
+                      <div className="text-xs text-zinc-400">
+                        Total: defaults to 10 cartons
                       </div>
-                    ) : null}
+                    )}
                     {formatWarehouseLowStockImportSummary(
                       row.warehouseLowStockThresholds,
                       row

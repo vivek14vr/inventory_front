@@ -38,7 +38,6 @@ export function downloadFailedProductImportExcel(
   const sheetRows = failed.map((row) => {
     const per = row.unitsPerStockUnit ?? 1;
     const totalLow = splitLowStockForExport(row.totalLowStockThreshold, per);
-    const defaultLow = splitLowStockForExport(row.lowStockThreshold, per);
     return {
       brand: row.brandName,
       "product primary name": row.primaryName,
@@ -47,8 +46,8 @@ export function downloadFailedProductImportExcel(
       "units in a cartoon": per,
       "total low quantity cartoon": totalLow.cartoon,
       "total low quantity unit": totalLow.unit,
-      "low quantity cartoon": defaultLow.cartoon,
-      "low quantity unit": defaultLow.unit,
+      "low quantity cartoon": totalLow.cartoon,
+      "low quantity unit": totalLow.unit,
       ...warehouseLowStockColumns(row),
       "brand action": row.brandAction ?? "",
       "merge target brand id": row.mergeTargetBrandId ?? "",

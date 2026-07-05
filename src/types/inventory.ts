@@ -102,11 +102,27 @@ export type StockResponse = {
   summary: StockSummary;
 };
 
+export type LowStockProductRow = {
+  productId: string;
+  productName: string;
+  secondaryProductName?: string;
+  brandId: string;
+  brandName: string;
+  stockUnit?: string;
+  unitsPerStockUnit?: number;
+  baseUnit?: string;
+  totalQuantity: number;
+  totalLowStockThreshold?: number;
+  isTotalLow?: boolean;
+  warehouseLow?: Record<string, number>;
+  warehouseThreshold?: Record<string, number>;
+  warehouseThresholdCustom?: Record<string, boolean>;
+};
+
 export type LowStockResponse = {
   count: number;
-  items: StockRow[];
-  totalCount: number;
-  totals: LowStockTotalRow[];
+  warehouses: StockWarehouseColumn[];
+  items: LowStockProductRow[];
 };
 
 export type StockItemLedgerRow = {

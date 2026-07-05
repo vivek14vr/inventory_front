@@ -20,7 +20,14 @@ export type StockMovement = {
   invoiceNumber?: string;
   notes?: string;
   invoiceLastWorkedAt?: string;
-  product?: { id: string; name: string; secondaryName?: string };
+  product?: {
+    id: string;
+    name: string;
+    secondaryName?: string;
+    stockUnit?: string;
+    unitsPerStockUnit?: number;
+    baseUnit?: string;
+  };
   brand?: { id: string; name: string };
   warehouse?: { id: string; name: string; code: string };
   destinationWarehouse?: { id: string; name: string; code: string };
@@ -65,4 +72,31 @@ export type TransferActivityReport = {
   total: number;
   byDate: TransferActivityDay[];
   items: TransferRecord[];
+};
+
+export type InvoiceGroupLine = {
+  movementId: string;
+  productId: string;
+  productName: string;
+  secondaryProductName?: string;
+  brandName: string;
+  quantity: number;
+  stockUnit?: string;
+  unitsPerStockUnit?: number;
+  baseUnit?: string;
+  type: "STOCK_IN" | "STOCK_OUT";
+  dispatchType?: string;
+  invoiceLastWorkedAt?: string;
+  createdAt: string;
+};
+
+export type InvoiceGroup = {
+  id: string;
+  invoiceNumber: string;
+  clientName: string;
+  createdAt: string;
+  voucherType: string;
+  warehouse?: { id: string; name: string; code: string };
+  lastWorkedMovementId?: string;
+  lines: InvoiceGroupLine[];
 };

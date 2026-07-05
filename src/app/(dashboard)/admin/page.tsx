@@ -23,6 +23,8 @@ import { AUTH_ROUTES } from "@/lib/auth/constants";
 import { api, ApiError } from "@/lib/api/client";
 import { LowStockReportPanel } from "@/components/dashboard/LowStockReportPanel";
 import { TransferActivityPanel } from "@/components/dashboard/TransferActivityPanel";
+import { ProductSearchBar } from "@/components/search/ProductSearchBar";
+import { fetchAdminProductSearchSuggestions } from "@/lib/search/productSearchSuggestions";
 import type { AdminDashboard } from "@/types/inventory";
 
 function StatIcons() {
@@ -91,6 +93,12 @@ export default function AdminDashboardPage() {
             Refresh
           </Button>
         }
+      />
+
+      <ProductSearchBar
+        inventoryPath={AUTH_ROUTES.adminInventory}
+        fetchSuggestions={fetchAdminProductSearchSuggestions}
+        className="max-w-2xl"
       />
 
       <Alert message={error} />

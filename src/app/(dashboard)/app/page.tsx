@@ -19,6 +19,8 @@ import { QuickActionCard } from "@/components/ui/QuickActionCard";
 import { StatCard } from "@/components/ui/StatCard";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
+import { ProductSearchBar } from "@/components/search/ProductSearchBar";
+import { fetchAppProductSearchSuggestions } from "@/lib/search/productSearchSuggestions";
 import type { InventoryBalance, PendingTransfer } from "@/types/stock";
 
 const routes = {
@@ -101,7 +103,7 @@ export default function AppDashboardPage() {
     void load();
   }, [load]);
 
-  const totalSkus = balances.length;
+  const totalSkus = balances.filter((b) => b.quantity > 0).length;
   const totalQty = balances.reduce((s, b) => s + b.quantity, 0);
   const warehouseLabel = getWarehouseLabel(user, authLoading);
 
@@ -116,6 +118,14 @@ export default function AppDashboardPage() {
           </Button>
         }
       />
+
+      {showStock && (
+        <ProductSearchBar
+          inventoryPath={AUTH_ROUTES.appInventory}
+          fetchSuggestions={fetchAppProductSearchSuggestions}
+          className="max-w-2xl"
+        />
+      )}
 
       <Alert message={error} />
 

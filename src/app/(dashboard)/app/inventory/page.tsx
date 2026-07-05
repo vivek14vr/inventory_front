@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
@@ -17,16 +18,24 @@ import {
 import { usePagination } from "@/hooks/usePagination";
 import type { PaginationMeta } from "@/types/pagination";
 import { formatSecondaryName } from "@/lib/products/productNames";
+import { SearchInputWithSuggestions } from "@/components/search/SearchInputWithSuggestions";
+import { createAppInventoryProductSuggestions } from "@/lib/search/productSearchSuggestions";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import type { InventoryBalance } from "@/types/stock";
 
-export default function AppInventoryPage() {
+function AppInventoryPageContent() {
+  const searchParams = useSearchParams();
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta | null>(null);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const { page, setPage, limit, setLimit, resetPage } = usePagination(20);
+
+  const fetchProductSuggestions = useMemo(
+    () => createAppInventoryProductSuggestions(),
+    []
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,15 +76,21 @@ export default function AppInventoryPage() {
 
       <div className="rounded-xl border border-zinc-200/80 bg-white p-4 shadow-sm">
         <label className="block text-xs font-medium text-zinc-500">Search</label>
-        <input
-          type="search"
+        <SearchInputWithSuggestions
           value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
+          onChange={(value) => {
+            setSearch(value);
             resetPage();
           }}
+          onSelect={(suggestion) => {
+            setSearch(suggestion.searchTerm);
+            resetPage();
+          }}
+          fetchSuggestions={fetchProductSuggestions}
           placeholder="Product or brand…"
-          className="mt-1 w-full max-w-md rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+          ariaLabel="Search inventory"
+          inputClassName="mt-1 w-full max-w-md rounded-lg border border-zinc-200 px-3 py-2 pl-10 text-sm"
+          emptyMessage={(term) => `No products match “${term}”`}
         />
       </div>
 
@@ -100,7 +115,7 @@ export default function AppInventoryPage() {
             ) : balances.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-10 text-center text-zinc-500">
-                  No stock on hand. Use Stock In to add inventory.
+                  No products found. Use Stock In to add inventory.
                 </td>
               </tr>
             ) : (
@@ -144,5 +159,19 @@ export default function AppInventoryPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function AppInventoryPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex justify-center py-16">
+          <LoadingSpinner label="Loading inventory…" />
+        </div>
+      }
+    >
+      <AppInventoryPageContent />
+    </Suspense>
   );
 }

@@ -10,10 +10,13 @@ import {
   type QuantityEntryMode,
 } from "@/lib/products/productUnits";
 import type { ProductWarehouseThreshold } from "@/types/master";
+import {
+  DEFAULT_LOW_STOCK_STOCK_UNITS,
+  defaultLowStockThresholdBase,
+} from "@/lib/inventory/lowStockDefaults";
 
 type ProductWarehouseThresholdsProps = {
   productId?: string | null;
-  productDefault: number | null | undefined;
   baseUnit: string;
   stockUnit: string;
   unitsPerStockUnit: number;
@@ -38,7 +41,6 @@ function rowsToInitialValues(
 
 export function ProductWarehouseThresholds({
   productId,
-  productDefault,
   baseUnit,
   stockUnit,
   unitsPerStockUnit,
@@ -61,10 +63,10 @@ export function ProductWarehouseThresholds({
   );
 
   const canToggle = unitsPerStockUnit > 1;
+  const defaultBase = defaultLowStockThresholdBase(unitsPerStockUnit);
   const defaultPlaceholder =
-    productDefault != null
-      ? thresholdBaseToDisplay(productDefault, thresholdMode, productUnits)
-      : "default";
+    thresholdBaseToDisplay(defaultBase, thresholdMode, productUnits) ||
+    String(DEFAULT_LOW_STOCK_STOCK_UNITS);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,14 +132,8 @@ export function ProductWarehouseThresholds({
       <div>
         <h3 className="text-sm font-semibold text-zinc-900">Low stock by warehouse</h3>
         <p className="mt-1 text-xs text-zinc-500">
-          Set a different alert level for each warehouse. Leave blank to use the product
-          default
-          {productDefault != null
-            ? ` (${thresholdBaseToDisplay(productDefault, thresholdMode, productUnits)}${
-                thresholdMode === "units" || !canToggle ? ` ${baseUnit}` : ""
-              })`
-            : ""}
-          .
+          Independent alert for each warehouse. Leave blank to use the default (
+          {DEFAULT_LOW_STOCK_STOCK_UNITS} cartons).
         </p>
       </div>
       <div className="overflow-hidden rounded-lg border border-zinc-200">
