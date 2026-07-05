@@ -38,6 +38,13 @@ export type Product = {
   unitsPerStockUnit: number;
   /** Alert when stock falls to this level or below. */
   lowStockThreshold?: number;
+  /** Warehouses with a custom low-stock override (not the product default). */
+  warehouseLowStockOverrides?: Array<{
+    warehouseId: string;
+    warehouseName: string;
+    warehouseCode: string;
+    lowStockThreshold: number;
+  }>;
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;

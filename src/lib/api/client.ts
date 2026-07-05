@@ -220,11 +220,16 @@ export const api = {
   },
 
   products: {
-    list: (opts?: PaginationParams & { includeInactive?: boolean; brandId?: string }) =>
+    list: (opts?: PaginationParams & {
+      includeInactive?: boolean;
+      brandId?: string;
+      includeWarehouseThresholds?: boolean;
+    }) =>
       apiClientPaginated<Product>("/products", {
         page: opts?.page ?? 1,
         limit: opts?.limit ?? 20,
         includeInactive: opts?.includeInactive ? "true" : "false",
+        ...(opts?.includeWarehouseThresholds ? { includeWarehouseThresholds: "true" } : {}),
         ...(opts?.brandId ? { brandId: opts.brandId } : {}),
         ...(opts?.search ? { search: opts.search } : {}),
         ...(opts?.sortBy ? { sortBy: opts.sortBy } : {}),

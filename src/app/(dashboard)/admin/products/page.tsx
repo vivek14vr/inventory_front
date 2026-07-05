@@ -11,6 +11,7 @@ import type { PaginationMeta } from "@/types/pagination";
 import type { Brand, Product, ProductWarehouseThreshold } from "@/types/master";
 import { formatSecondaryName } from "@/lib/products/productNames";
 import {
+  formatListLowStockThreshold,
   formatProductUnitSummary,
   formatThresholdPreview,
   thresholdBaseToDisplay,
@@ -54,6 +55,7 @@ export default function AdminProductsPage() {
     ProductWarehouseThreshold[]
   >([]);
   const [thresholdMode, setThresholdMode] = useState<QuantityEntryMode>("units");
+  const [listThresholdMode, setListThresholdMode] = useState<QuantityEntryMode>("units");
   const { page, setPage, limit, setLimit, resetPage } = usePagination(20);
 
   const perPack = parseInt(form.unitsPerStockUnit, 10) || 1;
@@ -76,6 +78,15 @@ export default function AdminProductsPage() {
     thresholdMode,
     productUnits
   );
+  const listToggleProduct = useMemo(() => {
+    const packProduct = products.find((p) => (p.unitsPerStockUnit ?? 1) > 1);
+    if (!packProduct) return null;
+    return {
+      baseUnit: packProduct.baseUnit,
+      stockUnit: packProduct.stockUnit,
+      unitsPerStockUnit: packProduct.unitsPerStockUnit,
+    };
+  }, [products]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -84,6 +95,7 @@ export default function AdminProductsPage() {
       const [productResult, brandList] = await Promise.all([
         api.products.list({
           includeInactive: true,
+          includeWarehouseThresholds: true,
           brandId: filterBrandId || undefined,
           page,
           limit,
@@ -399,6 +411,17 @@ export default function AdminProductsPage() {
       )}
 
       <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+        {listToggleProduct ? (
+          <div className="flex flex-wrap items-center justify-end gap-2 border-b border-zinc-100 bg-zinc-50/80 px-4 py-2">
+            <span className="text-xs text-zinc-600">Show low stock in</span>
+            <ThresholdUnitToggle
+              mode={listThresholdMode}
+              onModeChange={setListThresholdMode}
+              product={listToggleProduct}
+              size="sm"
+            />
+          </div>
+        ) : null}
         <table className="w-full text-left text-sm">
           <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-500">
             <tr>
@@ -406,7 +429,7 @@ export default function AdminProductsPage() {
               <th className="px-4 py-3">Secondary name</th>
               <th className="px-4 py-3">Brand</th>
               <th className="px-4 py-3">Units</th>
-              <th className="px-4 py-3">Default low stock</th>
+              <th className="px-4 py-3">Low stock</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3"></th>
             </tr>
@@ -434,7 +457,7 @@ export default function AdminProductsPage() {
                     {formatProductUnitSummary(p)}
                   </td>
                   <td className="px-4 py-3 text-zinc-600">
-                    {p.lowStockThreshold != null ? `≤ ${p.lowStockThreshold}` : "—"}
+                    <ProductLowStockCell product={p} mode={listThresholdMode} />
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge active={p.isActive} />
@@ -483,6 +506,49 @@ export default function AdminProductsPage() {
           onLimitChange={setLimit}
         />
       )}
+    </div>
+  );
+}
+
+function ProductLowStockCell({
+  product,
+  mode,
+}: {
+  product: Product;
+  mode: QuantityEntryMode;
+}) {
+  const overrides = product.warehouseLowStockOverrides ?? [];
+  const hasDefault = product.lowStockThreshold != null;
+
+  if (!hasDefault && overrides.length === 0) {
+    return <span className="text-zinc-400">—</span>;
+  }
+
+  return (
+    <div className="space-y-1">
+      {hasDefault ? (
+        <div>
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+            Default
+          </span>{" "}
+          <span className="text-zinc-700">
+            ≤ {formatListLowStockThreshold(product.lowStockThreshold!, mode, product)}
+          </span>
+        </div>
+      ) : null}
+      {overrides.map((wh) => (
+        <div key={wh.warehouseId}>
+          <span
+            className="font-mono text-[10px] font-bold uppercase text-amber-700"
+            title={wh.warehouseName}
+          >
+            {wh.warehouseCode}
+          </span>{" "}
+          <span className="text-amber-900">
+            ≤ {formatListLowStockThreshold(wh.lowStockThreshold, mode, product)}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

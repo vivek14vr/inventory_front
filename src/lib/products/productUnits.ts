@@ -255,3 +255,17 @@ export function formatBaseQuantityWithStockUnit(
   }
   return packPart;
 }
+
+/** Compact threshold label for tables (respects cartons vs pieces toggle). */
+export function formatListLowStockThreshold(
+  baseQty: number,
+  mode: QuantityEntryMode,
+  product?: Partial<ProductUnitFields> | null
+): string {
+  if (mode === "stockUnit" && usesStockUnit(product)) {
+    const display = thresholdBaseToDisplay(baseQty, mode, product);
+    const n = parseFloat(display) || 0;
+    return `${display} ${pluralizeStockUnit(getStockUnitLabel(product), n)}`;
+  }
+  return formatBaseUnits(baseQty, product);
+}

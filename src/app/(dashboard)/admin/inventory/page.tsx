@@ -27,12 +27,17 @@ import { isWarehouseLowStock, lowStockSourceLabel } from "@/lib/inventory/lowSto
 import {
   formatBaseQuantityWithStockUnit,
   formatBaseUnits,
+  formatThresholdPreview,
   getBaseUnitLabel,
   pluralizeStockUnit,
   splitBaseQuantity,
   stockUnitsAndLooseToBase,
+  thresholdBaseToDisplay,
+  thresholdDisplayToBase,
   usesStockUnit,
+  type QuantityEntryMode,
 } from "@/lib/products/productUnits";
+import { ThresholdUnitToggle } from "@/components/products/ThresholdUnitToggle";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import type {
   LowStockResponse,
@@ -838,10 +843,22 @@ function AdjustStockDialog({
   const [thresholdInput, setThresholdInput] = useState(
     row.warehouseLowStockThreshold != null ? String(row.warehouseLowStockThreshold) : ""
   );
+  const [thresholdMode, setThresholdMode] = useState<QuantityEntryMode>(
+    usesUnits ? "stockUnit" : "units"
+  );
   const [saving, setSaving] = useState(false);
 
   const unitLabel = row.stockUnit?.trim() || "unit";
   const baseLabel = getBaseUnitLabel(productUnits);
+  const thresholdPreview = formatThresholdPreview(
+    thresholdBaseToDisplay(
+      thresholdInput.trim() ? parseInt(thresholdInput, 10) : null,
+      thresholdMode,
+      productUnits
+    ),
+    thresholdMode,
+    productUnits
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1016,18 +1033,48 @@ function AdjustStockDialog({
                 : ""}
               .
             </p>
+            {usesUnits ? (
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs text-amber-800/90">Alert threshold in</span>
+                <ThresholdUnitToggle
+                  mode={thresholdMode}
+                  onModeChange={setThresholdMode}
+                  product={productUnits}
+                  size="sm"
+                />
+              </div>
+            ) : null}
             <input
               type="number"
               min={0}
-              value={thresholdInput}
-              onChange={(e) => setThresholdInput(e.target.value)}
+              step={thresholdMode === "stockUnit" && usesUnits ? "any" : 1}
+              value={thresholdBaseToDisplay(
+                thresholdInput.trim() ? parseInt(thresholdInput, 10) : null,
+                thresholdMode,
+                productUnits
+              )}
+              onChange={(e) => {
+                const nextBase = thresholdDisplayToBase(
+                  e.target.value,
+                  thresholdMode,
+                  productUnits
+                );
+                setThresholdInput(nextBase != null ? String(nextBase) : "");
+              }}
               placeholder={
                 row.productLowStockThreshold != null
-                  ? String(row.productLowStockThreshold)
-                  : "e.g. 100"
+                  ? thresholdBaseToDisplay(
+                      row.productLowStockThreshold,
+                      thresholdMode,
+                      productUnits
+                    ) || "e.g. 50"
+                  : "e.g. 50"
               }
               className="form-input mt-2 w-full"
             />
+            {thresholdPreview ? (
+              <p className="mt-1 text-xs font-medium text-amber-800/80">{thresholdPreview}</p>
+            ) : null}
             {row.lowStockThreshold != null && isWarehouseLow(row) ? (
               <p className="mt-2 text-xs font-semibold text-amber-800">
                 Currently below threshold at this warehouse.
