@@ -429,6 +429,43 @@ function isWarehouseLow(row: Pick<StockRow, "quantity" | "lowStockThreshold">): 
   return isWarehouseLowStock(row);
 }
 
+function ProductDetailCell({
+  product,
+  linkWarehouseId,
+}: {
+  product: StockProductRow;
+  linkWarehouseId?: string;
+}) {
+  const primaryName = product.productName;
+  const secondaryName = product.secondaryProductName?.trim();
+  const nameClassName = "text-base font-semibold text-stone-900";
+
+  return (
+    <div className="min-w-[10rem] max-w-xs">
+      {linkWarehouseId ? (
+        <ButtonLink
+          href={AUTH_ROUTES.adminInventoryItem(linkWarehouseId, product.productId)}
+          variant="ghost"
+          size="sm"
+          className="!h-auto !min-h-0 !px-0 !py-0 !text-base !font-semibold !text-stone-900 hover:!text-orange-800 hover:!underline"
+        >
+          {primaryName}
+        </ButtonLink>
+      ) : (
+        <p className={nameClassName}>{primaryName}</p>
+      )}
+      <p className="mt-0.5 text-sm text-stone-600">
+        {secondaryName ? formatSecondaryName(secondaryName) : "—"}
+      </p>
+      <p className="mt-1.5">
+        <span className="inline-flex max-w-full items-center rounded-md border border-orange-200/80 bg-orange-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-orange-800">
+          {product.brandName}
+        </span>
+      </p>
+    </div>
+  );
+}
+
 function StockView({
   data,
   onUpdated,
@@ -464,12 +501,8 @@ function StockView({
             <thead>
               <tr className="border-b border-stone-200 bg-orange-50 text-xs font-bold uppercase tracking-wide text-orange-800">
                 <th className="sticky left-0 z-10 bg-orange-50 px-4 py-3.5 text-left align-bottom">
-                  <StackedHeader text="Primary name" />
+                  Product detail
                 </th>
-                <th className="px-4 py-3.5 text-left align-bottom">
-                  <StackedHeader text="Secondary name" />
-                </th>
-                <th className="px-4 py-3.5 text-left align-bottom">Brand</th>
                 {warehouseColumns.map((wh) => (
                   <Fragment key={wh.warehouseId}>
                     <th className="px-4 py-3.5 text-left align-bottom">
@@ -493,7 +526,7 @@ function StockView({
               {products.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={warehouseColumns.length * 2 + 5}
+                    colSpan={warehouseColumns.length * 2 + 3}
                     className="px-5 py-10 text-center text-base font-medium text-stone-400"
                   >
                     No stock on hand
@@ -505,6 +538,7 @@ function StockView({
                     product.locations.map((loc) => [loc.warehouseId, loc])
                   );
                   const stockedLocations = product.locations.filter((loc) => loc.quantity > 0);
+                  const detailLinkLocation = stockedLocations[0] ?? product.locations[0];
                   return (
                     <tr
                       key={product.productId}
@@ -512,27 +546,12 @@ function StockView({
                         index % 2 === 0 ? "bg-white" : "bg-stone-50/40"
                       }`}
                     >
-                      <td className="sticky left-0 z-10 bg-inherit px-4 py-3.5 font-semibold text-stone-900">
-                        {stockedLocations[0] ? (
-                          <ButtonLink
-                            href={AUTH_ROUTES.adminInventoryItem(
-                              stockedLocations[0].warehouseId,
-                              product.productId
-                            )}
-                            variant="ghost"
-                            size="sm"
-                            className="!h-auto !min-h-0 !px-0 !py-0 !text-base !font-semibold !text-stone-900 hover:!text-orange-800 hover:!underline"
-                          >
-                            {product.productName}
-                          </ButtonLink>
-                        ) : (
-                          product.productName
-                        )}
+                      <td className="sticky left-0 z-10 bg-inherit px-4 py-3.5 align-top">
+                        <ProductDetailCell
+                          product={product}
+                          linkWarehouseId={detailLinkLocation?.warehouseId}
+                        />
                       </td>
-                      <td className="px-4 py-3.5 text-stone-600">
-                        {formatSecondaryName(product.secondaryProductName)}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3.5 text-stone-600">{product.brandName}</td>
                       {warehouseColumns.map((wh) => {
                         const loc = locationByWarehouse.get(wh.warehouseId);
                         return (
@@ -644,6 +663,7 @@ function StockView({
               product.locations.map((loc) => [loc.warehouseId, loc])
             );
             const stockedLocations = product.locations.filter((loc) => loc.quantity > 0);
+            const detailLinkLocation = stockedLocations[0] ?? product.locations[0];
             const lastUpdated = product.locations.reduce<string | null>((latest, loc) => {
               if (!latest || new Date(loc.updatedAt) > new Date(latest)) {
                 return loc.updatedAt;
@@ -656,31 +676,10 @@ function StockView({
                 className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm"
               >
                 <div className="flex items-start justify-between gap-3 border-b border-stone-100 bg-stone-50/60 px-4 py-3">
-                  <div className="min-w-0">
-                    {stockedLocations[0] ? (
-                      <ButtonLink
-                        href={AUTH_ROUTES.adminInventoryItem(
-                          stockedLocations[0].warehouseId,
-                          product.productId
-                        )}
-                        variant="ghost"
-                        size="sm"
-                        className="!h-auto !min-h-0 !px-0 !py-0 !text-base !font-bold !text-stone-900 hover:!text-orange-800 hover:!underline"
-                      >
-                        {product.productName}
-                      </ButtonLink>
-                    ) : (
-                      <span className="text-base font-bold text-stone-900">
-                        {product.productName}
-                      </span>
-                    )}
-                    <p className="mt-0.5 text-xs text-stone-500">
-                      {product.brandName}
-                      {product.secondaryProductName?.trim()
-                        ? ` · ${product.secondaryProductName}`
-                        : ""}
-                    </p>
-                  </div>
+                  <ProductDetailCell
+                    product={product}
+                    linkWarehouseId={detailLinkLocation?.warehouseId}
+                  />
                   <div className="shrink-0 text-right">
                     <p className="text-[10px] font-bold uppercase tracking-wide text-orange-600/80">
                       Total

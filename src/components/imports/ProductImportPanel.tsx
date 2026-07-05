@@ -1,15 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { ButtonSelect } from "@/components/ui/ButtonSelect";
 import { downloadFailedProductImportExcel } from "@/lib/imports/exportFailedProductImport";
 import { formatProductUnitSummary } from "@/lib/products/productUnits";
-import { formatLowStockImportSummary } from "@/lib/imports/formatLowStockImportSummary";
+import { formatLowStockImportSummary, formatWarehouseLowStockImportSummary } from "@/lib/imports/formatLowStockImportSummary";
 import { formatSecondaryName } from "@/lib/products/productNames";
-import type { Warehouse } from "@/types/master";
 import type {
   ProductImportPreview,
   ProductImportPreviewRow,
@@ -32,6 +30,11 @@ const DEMO_ROWS = [
     unit: "pieces",
     unitsPerCarton: "800",
     lowCartons: "5",
+    lowUnits: "",
+    goregaonCartons: "3",
+    goregaonUnits: "",
+    vasaiCartons: "",
+    vasaiUnits: "3200",
   },
 ];
 
@@ -83,8 +86,6 @@ function mergeProductIdForBrand(
 }
 
 export function ProductImportPanel() {
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [warehouseId, setWarehouseId] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ProductImportPreview | null>(null);
   const [rowActions, setRowActions] = useState<Record<number, RowActionState>>({});
@@ -94,18 +95,6 @@ export function ProductImportPanel() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    api.warehouses
-      .list(true)
-      .then((list) => {
-        setWarehouses(list);
-        setWarehouseId((current) => current || list[0]?.id || "");
-      })
-      .catch((err) => {
-        setError(err instanceof ApiError ? err.message : "Failed to load warehouses");
-      });
-  }, []);
 
   const matchedRows = useMemo(
     () => preview?.rows.filter((row) => row.category === "matched") ?? [],
@@ -144,10 +133,6 @@ export function ProductImportPanel() {
 
   async function handleConfirm() {
     if (!preview) return;
-    if (!warehouseId) {
-      setError("Select a warehouse before importing");
-      return;
-    }
     setConfirming(true);
     setError("");
     setSuccess("");
@@ -172,6 +157,8 @@ export function ProductImportPanel() {
             baseUnit: row.baseUnit,
             unitsPerStockUnit: row.unitsPerStockUnit,
             lowStockThreshold: row.lowStockThreshold,
+            totalLowStockThreshold: row.totalLowStockThreshold,
+            warehouseLowStockThresholds: row.warehouseLowStockThresholds,
             brandAction,
             mergeTargetBrandId,
             action: productAction,
@@ -188,7 +175,6 @@ export function ProductImportPanel() {
 
       const importResult = await api.imports.confirmProducts({
         fileName: file?.name,
-        warehouseId,
         rows,
       });
       setResult(importResult);
@@ -225,16 +211,16 @@ export function ProductImportPanel() {
           into an existing one or create a new brand, and merge the product into an existing
           item or create it separately.
         </p>
-        <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          Product catalog imports are global. The warehouse below is recorded for the audit
-          trail only; this import does not add opening stock to that warehouse.
+        <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          Imported products are listed in every active warehouse at zero stock. Use the
+          warehouse columns in Excel to set per-location low-stock alerts.
         </p>
 
         <div className="mt-5 overflow-x-auto rounded-lg border border-emerald-200 bg-emerald-50/40">
           <p className="border-b border-emerald-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-900">
             Example format (first sheet)
           </p>
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full min-w-[1100px] text-left text-sm">
             <thead>
               <tr className="border-b border-emerald-200 text-xs font-semibold uppercase text-emerald-800">
                 <th className="px-3 py-2">brand</th>
@@ -242,7 +228,12 @@ export function ProductImportPanel() {
                 <th className="px-3 py-2">product secondary name</th>
                 <th className="px-3 py-2">unit</th>
                 <th className="px-3 py-2">units in a cartoon</th>
-                <th className="px-3 py-2">low quantity cartoon</th>
+                <th className="px-3 py-2">total low quantity cartoon</th>
+                <th className="px-3 py-2">total low quantity unit</th>
+                <th className="px-3 py-2">low quantity cartoon in Goregaon</th>
+                <th className="px-3 py-2">low quantity unit in Goregaon</th>
+                <th className="px-3 py-2">low quantity cartoon in Vasai</th>
+                <th className="px-3 py-2">low quantity unit in Vasai</th>
               </tr>
             </thead>
             <tbody>
@@ -254,26 +245,24 @@ export function ProductImportPanel() {
                   <td className="px-3 py-2">{row.unit}</td>
                   <td className="px-3 py-2">{row.unitsPerCarton}</td>
                   <td className="px-3 py-2">{row.lowCartons}</td>
+                  <td className="px-3 py-2">{row.lowUnits}</td>
+                  <td className="px-3 py-2">{row.goregaonCartons}</td>
+                  <td className="px-3 py-2">{row.goregaonUnits}</td>
+                  <td className="px-3 py-2">{row.vasaiCartons}</td>
+                  <td className="px-3 py-2">{row.vasaiUnits}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           <p className="border-t border-emerald-200 px-4 py-2 text-xs text-emerald-900/80">
-            Low quantity is in cartons or boxes when pack size is greater than 1 (e.g. 4
-            boxes × 800 pieces = alert at 3,200 pieces). Set different alerts per warehouse
-            later on the Products page. New brands are created only when you choose
-            &quot;Create new brand&quot; for that row.
+            Use either cartons or units for each total and warehouse column — fill only one
+            side of each pair. <strong>Total low quantity</strong> is the combined alert
+            across all warehouses (e.g. 50 total even when Goregaon is 10 and Vasai is 30).
+            Warehouse names in headers must match active warehouses (e.g. Goregaon, Vasai).
           </p>
         </div>
 
         <form onSubmit={handlePreview} className="mt-5 space-y-4">
-          <ButtonSelect
-            label="Audit warehouse"
-            value={warehouseId}
-            onChange={setWarehouseId}
-            options={warehouses.map((w) => ({ value: w.id, label: w.name }))}
-            emptyMessage="No warehouses available"
-          />
           <div>
             <label className="block text-sm font-medium text-zinc-700">Excel file (.xlsx)</label>
             <input
@@ -372,7 +361,6 @@ export function ProductImportPanel() {
             type="button"
             disabled={
               confirming ||
-              !warehouseId ||
               preview.rows.every((row) => row.errors.length > 0) ||
               preview.errorCount === preview.totalRows
             }
@@ -381,9 +369,6 @@ export function ProductImportPanel() {
           >
             {confirming ? "Importing…" : "Confirm import"}
           </button>
-          {!warehouseId ? (
-            <p className="text-sm text-amber-700">Select a warehouse to enable import.</p>
-          ) : null}
         </div>
       )}
 
@@ -539,11 +524,28 @@ function ImportReviewTable({
                   </td>
                   <td className="px-3 py-2 text-zinc-600">
                     {formatProductUnitSummary(row)}
-                    {row.lowStockThreshold != null ? (
+                    {row.totalLowStockThreshold != null ? (
                       <div className="text-xs text-zinc-500">
-                        {formatLowStockImportSummary(row)}
+                        Total:{" "}
+                        {formatLowStockImportSummary({
+                          ...row,
+                          lowStockThreshold: row.totalLowStockThreshold,
+                        })}
                       </div>
                     ) : null}
+                    {row.lowStockThreshold != null ? (
+                      <div className="text-xs text-zinc-500">
+                        Default: {formatLowStockImportSummary(row)}
+                      </div>
+                    ) : null}
+                    {formatWarehouseLowStockImportSummary(
+                      row.warehouseLowStockThresholds,
+                      row
+                    ).map((line) => (
+                      <div key={line} className="text-xs text-amber-800">
+                        {line}
+                      </div>
+                    ))}
                   </td>
                   {mode === "matched" && (
                     <td className="px-3 py-2 text-zinc-600">
@@ -656,7 +658,9 @@ function ProductImportResultSummary({
         <div>
           <h3 className="font-semibold text-zinc-900">Product import result</h3>
           <p className="mt-1 text-sm text-zinc-600">
-            {result.warehouse ? `Audit warehouse: ${result.warehouse.name} · ` : ""}
+            {result.warehouses?.length
+              ? `Listed in ${result.warehouses.map((w) => w.name).join(", ")} · `
+              : ""}
             Success: {result.successCount} · Failed: {result.failedCount}
           </p>
         </div>

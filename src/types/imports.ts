@@ -19,6 +19,12 @@ export type TallyImport = {
   createdAt: string;
 };
 
+export type WarehouseLowStockImportEntry = {
+  warehouseId?: string;
+  warehouseName: string;
+  lowStockThreshold: number;
+};
+
 export type ProductImportPreviewRow = {
   rowNumber: number;
   brandName: string;
@@ -27,6 +33,8 @@ export type ProductImportPreviewRow = {
   baseUnit: string;
   unitsPerStockUnit: number;
   lowStockThreshold?: number;
+  totalLowStockThreshold?: number;
+  warehouseLowStockThresholds?: WarehouseLowStockImportEntry[];
   stockUnit: string;
   category: "matched" | "new";
   brandCategory: "matched" | "new";
@@ -90,6 +98,8 @@ export type ProductImportResultRow = {
   baseUnit?: string;
   unitsPerStockUnit?: number;
   lowStockThreshold?: number;
+  totalLowStockThreshold?: number;
+  warehouseLowStockThresholds?: WarehouseLowStockImportEntry[];
   brandAction?: "merge" | "create";
   mergeTargetBrandId?: string;
   status: "SUCCESS" | "FAILED";
@@ -102,6 +112,7 @@ export type ProductImportResultRow = {
 export type ProductImportResult = {
   fileName?: string;
   warehouse?: { id: string; name: string; code: string };
+  warehouses?: Array<{ id: string; name: string; code: string }>;
   totalRows: number;
   successCount: number;
   failedCount: number;
@@ -116,6 +127,8 @@ export type ProductImportRowDecision = {
   baseUnit: string;
   unitsPerStockUnit: number;
   lowStockThreshold?: number;
+  totalLowStockThreshold?: number;
+  warehouseLowStockThresholds?: WarehouseLowStockImportEntry[];
   action: "merge" | "create";
   mergeTargetProductId?: string;
   brandAction: "merge" | "create";

@@ -1,4 +1,5 @@
 import { pluralizeStockUnit } from "@/lib/products/productUnits";
+import type { WarehouseLowStockImportEntry } from "@/types/imports";
 
 type LowStockImportRow = {
   lowStockThreshold?: number;
@@ -24,4 +25,19 @@ export function formatLowStockImportSummary(row: LowStockImportRow): string {
   }
 
   return `Low at ${row.lowStockThreshold.toLocaleString()} ${baseLabel}`;
+}
+
+export function formatWarehouseLowStockImportSummary(
+  thresholds: WarehouseLowStockImportEntry[] | undefined,
+  row: LowStockImportRow
+): string[] {
+  if (!thresholds?.length) return [];
+
+  return thresholds.map((entry) => {
+    const summary = formatLowStockImportSummary({
+      ...row,
+      lowStockThreshold: entry.lowStockThreshold,
+    });
+    return `${entry.warehouseName}: ${summary}`;
+  });
 }

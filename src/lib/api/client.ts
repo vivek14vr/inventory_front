@@ -633,7 +633,6 @@ export const api = {
     },
     confirmProducts: (data: {
       fileName?: string;
-      warehouseId: string;
       rows: ProductImportRowDecision[];
     }) =>
       apiClient<ProductImportResult>("/imports/products/confirm", {
