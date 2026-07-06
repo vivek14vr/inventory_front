@@ -239,10 +239,6 @@ export const APP_ROUTE_PERMISSIONS: Array<{
     ],
   },
   {
-    prefix: "/app/receive",
-    permissions: [Permission.TRANSFERS_RECEIVE, Permission.TRANSFERS_VIEW],
-  },
-  {
     prefix: "/app/return",
     permissions: [...CLIENT_RETURN_PERMISSIONS, ...WAREHOUSE_RETURN_PERMISSIONS],
   },

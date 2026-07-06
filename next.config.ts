@@ -32,6 +32,20 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      {
+        source: "/app/receive",
+        destination: "/app/transfer",
+        permanent: true,
+      },
+      {
+        source: "/admin/receive",
+        destination: "/admin/transfer",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

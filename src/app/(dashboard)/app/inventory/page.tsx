@@ -83,7 +83,6 @@ function AppInventoryPageContent() {
           limit,
           includeZero: true,
           ...(search.trim() ? { search: search.trim() } : {}),
-          ...(warehouseId ? { warehouseId } : {}),
         });
         setCompanyProducts(result.data.products);
         setBalances([]);
