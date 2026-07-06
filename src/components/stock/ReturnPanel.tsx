@@ -1,10 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { ClientReturnPanel } from "@/components/stock/ClientReturnPanel";
 import { WarehouseReturnPanel } from "@/components/stock/WarehouseReturnPanel";
 import { SelectionGrid } from "@/components/ui/SelectionGrid";
 import { Alert } from "@/components/ui/Alert";
+import {
+  CLIENT_RETURN_PERMISSIONS,
+  hasAnyPermission,
+  WAREHOUSE_RETURN_PERMISSIONS,
+} from "@/lib/auth/permissions";
 
 type ReturnSource = "choose" | "client" | "warehouse";
 
@@ -18,32 +24,64 @@ export function ReturnPanel({
   defaultWarehouseId = "",
   allowedWarehouseIds,
 }: ReturnPanelProps) {
+  const { user } = useAuth();
   const [source, setSource] = useState<ReturnSource>("choose");
   const [success, setSuccess] = useState("");
+
+  const canClientReturn = useMemo(
+    () =>
+      hasAnyPermission(user?.role ?? "", user?.permissions, CLIENT_RETURN_PERMISSIONS),
+    [user]
+  );
+  const canWarehouseReturn = useMemo(
+    () =>
+      hasAnyPermission(
+        user?.role ?? "",
+        user?.permissions,
+        WAREHOUSE_RETURN_PERMISSIONS
+      ),
+    [user]
+  );
 
   function goBack() {
     setSource("choose");
   }
 
+  if (!canClientReturn && !canWarehouseReturn) {
+    return (
+      <Alert message="You do not have permission to process returns at this warehouse." />
+    );
+  }
+
   if (source === "choose") {
+    const items = [
+      ...(canClientReturn
+        ? [
+            {
+              id: "client",
+              title: "From client",
+              subtitle: "Open invoice · update sold quantity",
+            },
+          ]
+        : []),
+      ...(canWarehouseReturn
+        ? [
+            {
+              id: "warehouse",
+              title: "From warehouse",
+              subtitle: "Return received or in-transit transfers",
+            },
+          ]
+        : []),
+    ];
+
     return (
       <div className="space-y-5">
         <Alert message={success} type="success" />
         <SelectionGrid
           title="Return from where?"
-          subtitle="Client returns are tied to a sale invoice. Warehouse returns cover transfers between warehouses — received or still in transit."
-          items={[
-            {
-              id: "client",
-              title: "From client",
-              subtitle: "Look up invoice · full or partial return",
-            },
-            {
-              id: "warehouse",
-              title: "From warehouse",
-              subtitle: "Return accepted or in-transit transfers",
-            },
-          ]}
+          subtitle="Client returns correct sold quantities on an invoice. Warehouse returns send transfer stock back to the source."
+          items={items}
           onSelect={(id) => {
             setSuccess("");
             setSource(id === "client" ? "client" : "warehouse");
@@ -57,10 +95,7 @@ export function ReturnPanel({
     return (
       <div className="space-y-5">
         <Alert message={success} type="success" />
-        <ClientReturnPanel
-          defaultWarehouseId={defaultWarehouseId}
-          onBack={goBack}
-        />
+        <ClientReturnPanel defaultWarehouseId={defaultWarehouseId} onBack={goBack} />
       </div>
     );
   }

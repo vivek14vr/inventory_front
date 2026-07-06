@@ -5,6 +5,8 @@ export const Permission = {
   STOCK_VIEW: "stock.view",
   STOCK_IN: "stock.in",
   STOCK_OUT: "stock.out",
+  RETURNS_CLIENT: "returns.client",
+  RETURNS_WAREHOUSE: "returns.warehouse",
   INVENTORY_VIEW: "inventory.view",
   INVENTORY_ADJUST: "inventory.adjust",
   INVENTORY_DASHBOARD: "inventory.dashboard",
@@ -50,9 +52,31 @@ const WAREHOUSE_SCOPED = new Set<PermissionCode>([
   Permission.STOCK_VIEW,
   Permission.STOCK_IN,
   Permission.STOCK_OUT,
+  Permission.RETURNS_CLIENT,
+  Permission.RETURNS_WAREHOUSE,
   Permission.TRANSFERS_VIEW,
   Permission.TRANSFERS_RECEIVE,
 ]);
+
+export const CLIENT_RETURN_PERMISSIONS: PermissionCode[] = [
+  Permission.RETURNS_CLIENT,
+  Permission.STOCK_IN,
+  Permission.STOCK_OUT,
+];
+
+export const WAREHOUSE_RETURN_PERMISSIONS: PermissionCode[] = [
+  Permission.RETURNS_WAREHOUSE,
+  Permission.TRANSFERS_MANAGE,
+  Permission.TRANSFERS_RECEIVE,
+  Permission.STOCK_IN,
+  Permission.STOCK_OUT,
+];
+
+export const STOCK_BALANCE_READ_PERMISSIONS: PermissionCode[] = [
+  Permission.STOCK_VIEW,
+  Permission.STOCK_IN,
+  Permission.STOCK_OUT,
+];
 
 export function isWarehouseScopedPermission(code: PermissionCode): boolean {
   return WAREHOUSE_SCOPED.has(code);
@@ -84,6 +108,8 @@ export function defaultWarehouseOperatorPermissions(
     { code: Permission.STOCK_VIEW, warehouseId },
     { code: Permission.STOCK_IN, warehouseId },
     { code: Permission.STOCK_OUT, warehouseId },
+    { code: Permission.RETURNS_CLIENT, warehouseId },
+    { code: Permission.RETURNS_WAREHOUSE, warehouseId },
     { code: Permission.TRANSFERS_VIEW, warehouseId },
     { code: Permission.TRANSFERS_RECEIVE, warehouseId },
     { code: Permission.CHECKLISTS_COMPLETE },
@@ -122,6 +148,31 @@ export function hasAnyPermission(
   return codes.some((code) => hasPermission(role, permissions, code));
 }
 
+export function hasAllPermissions(
+  role: string,
+  permissions: PermissionGrant[] | undefined,
+  codes: PermissionCode[]
+): boolean {
+  return codes.every((code) => hasPermission(role, permissions, code));
+}
+
+export function canWarehouseReturn(
+  role: string,
+  permissions: PermissionGrant[] | undefined,
+  warehouseId?: string
+): boolean {
+  if (isAdminRole(role)) return true;
+  if (hasPermission(role, permissions, Permission.TRANSFERS_MANAGE)) return true;
+  if (!warehouseId) {
+    return WAREHOUSE_RETURN_PERMISSIONS.some((code) =>
+      hasPermission(role, permissions, code)
+    );
+  }
+  return WAREHOUSE_RETURN_PERMISSIONS.filter(
+    (code) => code !== Permission.TRANSFERS_MANAGE
+  ).some((code) => hasPermission(role, permissions, code, warehouseId));
+}
+
 /** First navigable path for a permission-based user */
 export function getDefaultAppPath(
   role: string,
@@ -137,9 +188,11 @@ export function getDefaultAppPath(
       path: "/app/stock",
     },
     {
-      codes: [Permission.INVENTORY_VIEW, Permission.INVENTORY_ADJUST],
+      codes: [...STOCK_BALANCE_READ_PERMISSIONS, Permission.INVENTORY_VIEW],
       path: "/app/inventory",
     },
+    { codes: CLIENT_RETURN_PERMISSIONS, path: "/app/return" },
+    { codes: WAREHOUSE_RETURN_PERMISSIONS, path: "/app/return" },
     { codes: [Permission.TRANSFERS_RECEIVE], path: "/app/transfer" },
     { codes: [Permission.TRANSFERS_VIEW], path: "/app/transfers" },
     { codes: [Permission.TRANSFERS_MANAGE], path: "/app/transfers" },
@@ -161,19 +214,20 @@ export function getDefaultAppPath(
   return "/app";
 }
 
-/** Route prefix → any of these permissions grants access */
+/** Route prefix → permissions required to access */
 export const APP_ROUTE_PERMISSIONS: Array<{
   prefix: string;
   permissions: PermissionCode[];
+  requireAll?: boolean;
 }> = [
   { prefix: "/app", permissions: [Permission.DASHBOARD_VIEW, Permission.INVENTORY_DASHBOARD] },
   {
     prefix: "/app/stock-in",
-    permissions: [Permission.STOCK_IN, Permission.STOCK_VIEW],
+    permissions: [Permission.STOCK_IN],
   },
   {
     prefix: "/app/stock-out",
-    permissions: [Permission.STOCK_OUT, Permission.STOCK_VIEW],
+    permissions: [Permission.STOCK_OUT],
   },
   {
     prefix: "/app/transfer",
@@ -190,15 +244,12 @@ export const APP_ROUTE_PERMISSIONS: Array<{
   },
   {
     prefix: "/app/return",
-    permissions: [
-      Permission.STOCK_IN,
-      Permission.TRANSFERS_RECEIVE,
-      Permission.TRANSFERS_VIEW,
-    ],
+    permissions: [...CLIENT_RETURN_PERMISSIONS, ...WAREHOUSE_RETURN_PERMISSIONS],
   },
   {
     prefix: "/app/wrong-invoice",
-    permissions: [Permission.INVENTORY_ADJUST],
+    permissions: [Permission.INVENTORY_VIEW, Permission.INVENTORY_ADJUST],
+    requireAll: true,
   },
   {
     prefix: "/app/stock",
@@ -206,11 +257,7 @@ export const APP_ROUTE_PERMISSIONS: Array<{
   },
   {
     prefix: "/app/inventory",
-    permissions: [
-      Permission.STOCK_VIEW,
-      Permission.INVENTORY_VIEW,
-      Permission.INVENTORY_ADJUST,
-    ],
+    permissions: [...STOCK_BALANCE_READ_PERMISSIONS, Permission.INVENTORY_VIEW],
   },
   {
     prefix: "/app/transfers",
@@ -257,7 +304,9 @@ export function canAccessAppPath(
     .sort((a, b) => b.prefix.length - a.prefix.length)
     .find((r) => pathname === r.prefix || pathname.startsWith(`${r.prefix}/`));
 
-  // Unknown /app/* paths are denied by default (fail closed).
   if (!match) return false;
+  if (match.requireAll) {
+    return hasAllPermissions(role, permissions, match.permissions);
+  }
   return hasAnyPermission(role, permissions, match.permissions);
 }

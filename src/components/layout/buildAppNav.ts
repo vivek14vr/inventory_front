@@ -1,7 +1,10 @@
 import { AUTH_ROUTES } from "@/lib/auth/constants";
 import {
+  CLIENT_RETURN_PERMISSIONS,
   hasAnyPermission,
   Permission,
+  STOCK_BALANCE_READ_PERMISSIONS,
+  WAREHOUSE_RETURN_PERMISSIONS,
   type PermissionGrant,
 } from "@/lib/auth/permissions";
 
@@ -43,22 +46,26 @@ export function buildAppNavGroups(
   }
   if (
     hasAnyPermission(role, permissions, [
-      Permission.STOCK_IN,
-      Permission.TRANSFERS_RECEIVE,
-      Permission.TRANSFERS_VIEW,
+      ...CLIENT_RETURN_PERMISSIONS,
+      ...WAREHOUSE_RETURN_PERMISSIONS,
     ])
   ) {
     mainMenu.push({ href: AUTH_ROUTES.appReturn, label: "Return" });
   }
   if (
     hasAnyPermission(role, permissions, [
-      Permission.STOCK_VIEW,
+      ...STOCK_BALANCE_READ_PERMISSIONS,
       Permission.INVENTORY_VIEW,
     ])
   ) {
     mainMenu.push({ href: AUTH_ROUTES.appInventory, label: "Check Stock" });
   }
-  if (hasAnyPermission(role, permissions, [Permission.INVENTORY_ADJUST])) {
+  if (
+    hasAnyPermission(role, permissions, [
+      Permission.INVENTORY_VIEW,
+      Permission.INVENTORY_ADJUST,
+    ])
+  ) {
     mainMenu.push({ href: AUTH_ROUTES.appInvoices, label: "Invoices" });
   }
   if (hasAnyPermission(role, permissions, [Permission.REPORTS_VIEW])) {
@@ -107,9 +114,14 @@ export function buildAppNavGroups(
   if (hasAnyPermission(role, permissions, [Permission.AUDIT_VIEW])) {
     moreMenu.push({ href: AUTH_ROUTES.appAudit, label: "Activity Log" });
   }
-  if (hasAnyPermission(role, permissions, [Permission.CHECKLISTS_COMPLETE])) {
-    mainMenu.push({ href: AUTH_ROUTES.appChecklists, label: "Daily Tasks" });
-    mainMenu.push({ href: AUTH_ROUTES.appNotifications, label: "Notifications" });
+  if (
+    hasAnyPermission(role, permissions, [
+      Permission.CHECKLISTS_COMPLETE,
+      Permission.CHECKLISTS_MANAGE,
+    ])
+  ) {
+    moreMenu.push({ href: AUTH_ROUTES.appChecklists, label: "Daily Tasks" });
+    moreMenu.push({ href: AUTH_ROUTES.appNotifications, label: "Notifications" });
   }
 
   const groups: NavGroup[] = [];

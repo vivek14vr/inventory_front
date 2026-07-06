@@ -17,15 +17,31 @@ import {
 } from "@/components/ui/DataTable";
 import { usePagination } from "@/hooks/usePagination";
 import type { PaginationMeta } from "@/types/pagination";
+import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permission } from "@/lib/auth/permissions";
 import { formatSecondaryName } from "@/lib/products/productNames";
 import { SearchInputWithSuggestions } from "@/components/search/SearchInputWithSuggestions";
 import { createAppInventoryProductSuggestions } from "@/lib/search/productSearchSuggestions";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import type { InventoryBalance } from "@/types/stock";
+import type { StockProductRow } from "@/types/inventory";
+import { getPrimaryWarehouseId } from "@/lib/auth/warehouseContext";
 
 function AppInventoryPageContent() {
+  const { user } = useAuth();
+  const { can, canAny } = usePermissions();
+  const warehouseId = getPrimaryWarehouseId(user) ?? "";
+  const useWarehouseBalances = canAny([
+    Permission.STOCK_VIEW,
+    Permission.STOCK_IN,
+    Permission.STOCK_OUT,
+  ]);
+  const useCompanyInventory = can(Permission.INVENTORY_VIEW);
+
   const searchParams = useSearchParams();
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
+  const [companyProducts, setCompanyProducts] = useState<StockProductRow[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta | null>(null);
   const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
   const [loading, setLoading] = useState(true);
@@ -41,19 +57,46 @@ function AppInventoryPageContent() {
     setLoading(true);
     setError("");
     try {
-      const result = await api.stock.balances({
-        page,
-        limit,
-        ...(search.trim() ? { search: search.trim() } : {}),
-      });
-      setBalances(result.items);
-      setPagination(result.pagination);
+      if (useWarehouseBalances) {
+        const result = await api.stock.balances({
+          page,
+          limit,
+          ...(search.trim() ? { search: search.trim() } : {}),
+          ...(warehouseId ? { warehouseId } : {}),
+        });
+        setBalances(result.items);
+        setCompanyProducts([]);
+        setPagination(result.pagination);
+      } else if (useCompanyInventory) {
+        const result = await api.inventory.stock({
+          page,
+          limit,
+          includeZero: true,
+          ...(search.trim() ? { search: search.trim() } : {}),
+          ...(warehouseId ? { warehouseId } : {}),
+        });
+        setCompanyProducts(result.data.products);
+        setBalances([]);
+        setPagination(result.pagination);
+      } else {
+        setBalances([]);
+        setCompanyProducts([]);
+        setPagination(null);
+        setError("You do not have permission to view stock");
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load inventory");
     } finally {
       setLoading(false);
     }
-  }, [page, limit, search]);
+  }, [
+    page,
+    limit,
+    search,
+    warehouseId,
+    useWarehouseBalances,
+    useCompanyInventory,
+  ]);
 
   useEffect(() => {
     load();
@@ -112,13 +155,13 @@ function AppInventoryPageContent() {
                   <LoadingSpinner />
                 </td>
               </tr>
-            ) : balances.length === 0 ? (
+            ) : balances.length === 0 && companyProducts.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-10 text-center text-zinc-500">
-                  No products found. Use Stock In to add inventory.
+                  No products found.
                 </td>
               </tr>
-            ) : (
+            ) : balances.length > 0 ? (
               balances.map((b) => (
                 <DataTableRow key={`${b.productId}-${b.brandId}`}>
                   <DataTableTd className="font-medium text-zinc-900">
@@ -140,6 +183,41 @@ function AppInventoryPageContent() {
                   </DataTableTd>
                   <DataTableTd className="text-zinc-500">
                     {new Date(b.updatedAt).toLocaleString("en-IN", {
+                      dateStyle: "short",
+                      timeStyle: "short",
+                    })}
+                  </DataTableTd>
+                </DataTableRow>
+              ))
+            ) : (
+              companyProducts.map((product) => (
+                <DataTableRow key={product.productId}>
+                  <DataTableTd className="font-medium text-zinc-900">
+                    {product.productName}
+                  </DataTableTd>
+                  <DataTableTd className="text-zinc-600">
+                    {formatSecondaryName(product.secondaryProductName)}
+                  </DataTableTd>
+                  <DataTableTd className="text-zinc-600">{product.brandName}</DataTableTd>
+                  <DataTableTd align="right">
+                    <StockQuantityDisplay
+                      quantity={product.totalQuantity}
+                      stockUnit={product.stockUnit}
+                      unitsPerStockUnit={product.unitsPerStockUnit}
+                      baseUnit={product.baseUnit}
+                      size="md"
+                      align="right"
+                    />
+                  </DataTableTd>
+                  <DataTableTd className="text-zinc-500">
+                    {new Date(
+                      Math.max(
+                        ...product.locations.map((loc) =>
+                          new Date(loc.updatedAt).getTime()
+                        ),
+                        0
+                      )
+                    ).toLocaleString("en-IN", {
                       dateStyle: "short",
                       timeStyle: "short",
                     })}
