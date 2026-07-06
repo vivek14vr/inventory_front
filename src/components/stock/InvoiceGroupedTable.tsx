@@ -6,6 +6,7 @@ import type { InvoiceGroup, InvoiceGroupLine } from "@/types/stock";
 
 type InvoiceGroupedTableProps = {
   groups: InvoiceGroup[];
+  canAdjust?: boolean;
   lastWorkedMovementId: string | null;
   groupDrafts: Record<string, { invoiceNumber: string; clientName: string }>;
   lineDrafts: Record<string, { quantity: string }>;
@@ -63,6 +64,7 @@ function productParticulars(line: InvoiceGroupLine): string {
 
 export function InvoiceGroupedTable({
   groups,
+  canAdjust = true,
   lastWorkedMovementId,
   groupDrafts,
   lineDrafts,
@@ -174,14 +176,18 @@ export function InvoiceGroupedTable({
                   </td>
                   <td className="border-r border-stone-200 px-4 py-3 align-top">
                     <div className={INVOICE_HEAD}>
-                      <input
-                        value={groupDraft.clientName}
-                        onChange={(e) =>
-                          onGroupDraftChange(group.id, { clientName: e.target.value })
-                        }
-                        className="form-input w-full min-w-[140px]"
-                        placeholder="Client name"
-                      />
+                      {canAdjust ? (
+                        <input
+                          value={groupDraft.clientName}
+                          onChange={(e) =>
+                            onGroupDraftChange(group.id, { clientName: e.target.value })
+                          }
+                          className="form-input w-full min-w-[140px]"
+                          placeholder="Client name"
+                        />
+                      ) : (
+                        <span className="font-medium text-stone-800">{group.clientName}</span>
+                      )}
                     </div>
                     {group.lines.map((line) => (
                       <div key={line.movementId} className={LINE_ROW} aria-hidden />
@@ -195,14 +201,18 @@ export function InvoiceGroupedTable({
                   </td>
                   <td className="border-r border-stone-200 px-4 py-3 align-top">
                     <div className={INVOICE_HEAD}>
-                      <input
-                        value={groupDraft.invoiceNumber}
-                        onChange={(e) =>
-                          onGroupDraftChange(group.id, { invoiceNumber: e.target.value })
-                        }
-                        className="form-input w-full min-w-[120px]"
-                        placeholder="Voucher no."
-                      />
+                      {canAdjust ? (
+                        <input
+                          value={groupDraft.invoiceNumber}
+                          onChange={(e) =>
+                            onGroupDraftChange(group.id, { invoiceNumber: e.target.value })
+                          }
+                          className="form-input w-full min-w-[120px]"
+                          placeholder="Voucher no."
+                        />
+                      ) : (
+                        <span className="font-medium text-stone-800">{group.invoiceNumber}</span>
+                      )}
                     </div>
                     {group.lines.map((line) => (
                       <div key={line.movementId} className={LINE_ROW} aria-hidden />
@@ -217,7 +227,7 @@ export function InvoiceGroupedTable({
 
                       return (
                         <div key={line.movementId} className={LINE_ROW}>
-                          {isEditableSaleLine(line) ? (
+                          {isEditableSaleLine(line) && canAdjust ? (
                             <input
                               type="number"
                               min={0}
@@ -239,6 +249,8 @@ export function InvoiceGroupedTable({
                     })}
                   </td>
                   <td className="px-4 py-3 align-top">
+                    {canAdjust ? (
+                      <>
                     <div className={`${INVOICE_HEAD} flex-wrap justify-end gap-1.5`}>
                       <button
                         type="button"
@@ -305,6 +317,10 @@ export function InvoiceGroupedTable({
                         {group.warehouse.code}
                       </p>
                     ) : null}
+                      </>
+                    ) : (
+                      <p className="text-right text-xs text-stone-500">View only</p>
+                    )}
                   </td>
                 </tr>
               );

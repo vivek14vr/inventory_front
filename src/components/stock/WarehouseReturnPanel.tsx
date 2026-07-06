@@ -70,16 +70,22 @@ export function WarehouseReturnPanel({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [returningId, setReturningId] = useState<string | null>(null);
-  const [returnNotes, setReturnNotes] = useState("");
+  const [returnNotesById, setReturnNotesById] = useState<Record<string, string>>({});
 
   const scopeTransfers = useCallback(
-    <T extends { destinationWarehouse?: { id: string } }>(items: T[]): T[] => {
+    <T extends {
+      destinationWarehouse?: { id: string };
+      sourceWarehouse?: { id: string };
+    }>(items: T[]): T[] => {
       if (!allowedWarehouseIds || allowedWarehouseIds.length === 0) return items;
-      return items.filter((t) =>
-        t.destinationWarehouse
-          ? allowedWarehouseIds.includes(t.destinationWarehouse.id)
-          : false
-      );
+      return items.filter((t) => {
+        const destId = t.destinationWarehouse?.id;
+        const sourceId = t.sourceWarehouse?.id;
+        return (
+          (destId != null && allowedWarehouseIds.includes(destId)) ||
+          (sourceId != null && allowedWarehouseIds.includes(sourceId))
+        );
+      });
     },
     [allowedWarehouseIds]
   );
@@ -122,12 +128,16 @@ export function WarehouseReturnPanel({
     setSuccess("");
     try {
       await api.transfers.returnGoods(transfer.id, {
-        notes: returnNotes.trim() || undefined,
+        notes: returnNotesById[transfer.id]?.trim() || undefined,
       });
       setSuccess(
         `${formatBaseQuantityWithStockUnit(transfer.quantity, transfer.product)} returned from ${transfer.destinationWarehouse.code} to ${transfer.sourceWarehouse.code}`
       );
-      setReturnNotes("");
+      setReturnNotesById((prev) => {
+        const next = { ...prev };
+        delete next[transfer.id];
+        return next;
+      });
       await loadTransfers();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to process return");
@@ -142,12 +152,16 @@ export function WarehouseReturnPanel({
     setSuccess("");
     try {
       await api.transfers.returnInTransit(transfer.id, {
-        notes: returnNotes.trim() || undefined,
+        notes: returnNotesById[transfer.id]?.trim() || undefined,
       });
       setSuccess(
         `${formatBaseQuantityWithStockUnit(transfer.quantity, transfer.product)} sent back to ${transfer.sourceWarehouse.code}`
       );
-      setReturnNotes("");
+      setReturnNotesById((prev) => {
+        const next = { ...prev };
+        delete next[transfer.id];
+        return next;
+      });
       await loadTransfers();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to process return");
@@ -188,15 +202,6 @@ export function WarehouseReturnPanel({
             ? "Return goods that were already accepted at this warehouse back to the sending warehouse."
             : "Return goods still in transit before they are accepted at the destination."}
         </p>
-        <label className="mt-4 block text-sm font-semibold text-stone-700">
-          Return notes (optional)
-        </label>
-        <input
-          value={returnNotes}
-          onChange={(e) => setReturnNotes(e.target.value)}
-          className="form-input mt-2"
-          placeholder="Reason for return, condition of goods, etc."
-        />
       </div>
 
       {loading ? (
@@ -256,15 +261,28 @@ export function WarehouseReturnPanel({
                       {transfer.receivedBy?.name ?? "—"}
                     </DataTableTd>
                     <DataTableTd align="right">
-                      <Button
-                        type="button"
-                        size="sm"
-                        loading={returningId === transfer.id}
-                        disabled={returningId !== null && returningId !== transfer.id}
-                        onClick={() => void confirmReceivedReturn(transfer)}
-                      >
-                        Return to source
-                      </Button>
+                      <div className="flex flex-col items-end gap-2">
+                        <input
+                          value={returnNotesById[transfer.id] ?? ""}
+                          onChange={(e) =>
+                            setReturnNotesById((prev) => ({
+                              ...prev,
+                              [transfer.id]: e.target.value,
+                            }))
+                          }
+                          className="form-input w-40 text-sm"
+                          placeholder="Notes (optional)"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          loading={returningId === transfer.id}
+                          disabled={returningId !== null && returningId !== transfer.id}
+                          onClick={() => void confirmReceivedReturn(transfer)}
+                        >
+                          Return to source
+                        </Button>
+                      </div>
                     </DataTableTd>
                   </DataTableRow>
                 ))}
@@ -322,15 +340,28 @@ export function WarehouseReturnPanel({
                     </span>
                   </DataTableTd>
                   <DataTableTd align="right">
-                    <Button
-                      type="button"
-                      size="sm"
-                      loading={returningId === transfer.id}
-                      disabled={returningId !== null && returningId !== transfer.id}
-                      onClick={() => void confirmInTransitReturn(transfer)}
-                    >
-                      Return to source
-                    </Button>
+                    <div className="flex flex-col items-end gap-2">
+                      <input
+                        value={returnNotesById[transfer.id] ?? ""}
+                        onChange={(e) =>
+                          setReturnNotesById((prev) => ({
+                            ...prev,
+                            [transfer.id]: e.target.value,
+                          }))
+                        }
+                        className="form-input w-40 text-sm"
+                        placeholder="Notes (optional)"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        loading={returningId === transfer.id}
+                        disabled={returningId !== null && returningId !== transfer.id}
+                        onClick={() => void confirmInTransitReturn(transfer)}
+                      >
+                        Return to source
+                      </Button>
+                    </div>
                   </DataTableTd>
                 </DataTableRow>
               ))}

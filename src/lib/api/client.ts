@@ -1,6 +1,6 @@
 import { refreshAccessToken } from "@/lib/api/authSession";
 import { apiUrl, buildApiUrl } from "@/lib/api/base";
-import { getAccessToken, getAccessTokenIfValid, getRefreshToken } from "@/lib/auth/token";
+import { getAccessTokenIfValid, getRefreshToken } from "@/lib/auth/token";
 import type { AuthUser, LoginResponse, PublicUser } from "@/types/auth";
 import type { Brand, Product, ProductWarehouseThreshold, Warehouse } from "@/types/master";
 import type {
@@ -66,6 +66,49 @@ async function parseJsonResponse<T>(response: Response): Promise<ApiResponse<T>>
   } catch {
     throw new ApiError("Invalid response from server", response.status);
   }
+}
+
+async function resolveAuthToken(explicit?: string | null): Promise<string | undefined> {
+  if (explicit) return explicit;
+  return getAccessTokenIfValid() ?? (await refreshAccessToken()) ?? undefined;
+}
+
+async function fetchWithAuth(
+  url: string,
+  init: RequestInit,
+  options?: { token?: string | null; _retry?: boolean }
+): Promise<Response> {
+  const token = await resolveAuthToken(options?.token);
+  const headers: Record<string, string> = {
+    ...(init.headers as Record<string, string> | undefined),
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      credentials: "include",
+      headers,
+    });
+  } catch {
+    throw new ApiError(
+      "Cannot reach server. Check that the API is running on port 4000.",
+      0,
+      "NETWORK_ERROR"
+    );
+  }
+
+  if (response.status === 401 && !options?._retry) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      return fetchWithAuth(url, init, { token: refreshed, _retry: true });
+    }
+  }
+
+  return response;
 }
 
 export async function apiClient<T>(
@@ -624,11 +667,7 @@ export const api = {
       if (filters?.dateTo) url.searchParams.set("dateTo", filters.dateTo);
       if (filters?.groupBy) url.searchParams.set("groupBy", filters.groupBy);
 
-      const token = getAccessToken();
-      const response = await fetch(url.toString(), {
-        credentials: "include",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const response = await fetchWithAuth(url.toString(), {});
       if (!response.ok) {
         throw new ApiError("Export failed", response.status);
       }
@@ -653,22 +692,10 @@ export const api = {
       form.append("file", file);
       form.append("warehouseId", warehouseId);
 
-      const token = getAccessToken();
-      let response: Response;
-      try {
-        response = await fetch(apiUrl("/imports/tally"), {
-          method: "POST",
-          credentials: "include",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          body: form,
-        });
-      } catch {
-        throw new ApiError(
-          "Cannot reach server. Check that the API is running on port 4000.",
-          0,
-          "NETWORK_ERROR"
-        );
-      }
+      const response = await fetchWithAuth(apiUrl("/imports/tally"), {
+        method: "POST",
+        body: form,
+      });
 
       let body: ApiResponse<TallyImport>;
       try {
@@ -688,22 +715,10 @@ export const api = {
     previewProducts: async (file: File): Promise<ProductImportPreview> => {
       const form = new FormData();
       form.append("file", file);
-      const token = getAccessToken();
-      let response: Response;
-      try {
-        response = await fetch(apiUrl("/imports/products/preview"), {
-          method: "POST",
-          credentials: "include",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          body: form,
-        });
-      } catch {
-        throw new ApiError(
-          "Cannot reach server. Check that the API is running on port 4000.",
-          0,
-          "NETWORK_ERROR"
-        );
-      }
+      const response = await fetchWithAuth(apiUrl("/imports/products/preview"), {
+        method: "POST",
+        body: form,
+      });
       let body: ApiResponse<ProductImportPreview>;
       try {
         body = (await response.json()) as ApiResponse<ProductImportPreview>;
@@ -726,22 +741,10 @@ export const api = {
     previewSales: async (file: File): Promise<SalesImportPreview> => {
       const form = new FormData();
       form.append("file", file);
-      const token = getAccessToken();
-      let response: Response;
-      try {
-        response = await fetch(apiUrl("/imports/sales/preview"), {
-          method: "POST",
-          credentials: "include",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          body: form,
-        });
-      } catch {
-        throw new ApiError(
-          "Cannot reach server. Check that the API is running on port 4000.",
-          0,
-          "NETWORK_ERROR"
-        );
-      }
+      const response = await fetchWithAuth(apiUrl("/imports/sales/preview"), {
+        method: "POST",
+        body: form,
+      });
       let body: ApiResponse<SalesImportPreview>;
       try {
         body = (await response.json()) as ApiResponse<SalesImportPreview>;

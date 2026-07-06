@@ -1,6 +1,7 @@
 import { AUTH_ROUTES } from "@/lib/auth/constants";
 import {
   CLIENT_RETURN_PERMISSIONS,
+  hasAllPermissions,
   hasAnyPermission,
   Permission,
   STOCK_BALANCE_READ_PERMISSIONS,
@@ -61,7 +62,7 @@ export function buildAppNavGroups(
     mainMenu.push({ href: AUTH_ROUTES.appInventory, label: "Check Stock" });
   }
   if (
-    hasAnyPermission(role, permissions, [
+    hasAllPermissions(role, permissions, [
       Permission.INVENTORY_VIEW,
       Permission.INVENTORY_ADJUST,
     ])

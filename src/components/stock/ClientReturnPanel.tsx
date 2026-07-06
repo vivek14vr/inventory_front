@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
@@ -51,7 +51,11 @@ export function ClientReturnPanel({
 
   const { page, setPage, limit, setLimit, resetPage } = usePagination(20);
 
+  const [detailErrors, setDetailErrors] = useState<Record<string, string>>({});
+  const listRequestIdRef = useRef(0);
+
   const loadInvoiceList = useCallback(async () => {
+    const requestId = ++listRequestIdRef.current;
     setListLoading(true);
     setError("");
     try {
@@ -61,19 +65,28 @@ export function ClientReturnPanel({
         ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
         ...(defaultWarehouseId ? { warehouseId: defaultWarehouseId } : {}),
       });
+      if (requestId !== listRequestIdRef.current) return;
       setInvoices(result.items);
       setPagination(result.pagination);
     } catch (err) {
+      if (requestId !== listRequestIdRef.current) return;
       setInvoices([]);
       setPagination(null);
       setError(err instanceof ApiError ? err.message : "Failed to load invoices");
     } finally {
-      setListLoading(false);
+      if (requestId === listRequestIdRef.current) {
+        setListLoading(false);
+      }
     }
   }, [page, limit, debouncedSearch, defaultWarehouseId]);
 
   const loadInvoiceDetail = useCallback(async (summary: ClientReturnInvoiceSummary) => {
     setDetailLoadingId(summary.id);
+    setDetailErrors((prev) => {
+      const next = { ...prev };
+      delete next[summary.id];
+      return next;
+    });
     setError("");
     try {
       const result = await api.stock.getClientReturnInvoice({
@@ -89,8 +102,11 @@ export function ClientReturnPanel({
         ),
       }));
     } catch (err) {
-      setExpandedId(null);
-      setError(err instanceof ApiError ? err.message : "Failed to load invoice");
+      setDetailErrors((prev) => ({
+        ...prev,
+        [summary.id]:
+          err instanceof ApiError ? err.message : "Failed to load invoice details",
+      }));
     } finally {
       setDetailLoadingId(null);
     }
@@ -176,9 +192,6 @@ export function ClientReturnPanel({
       return;
     }
 
-    const previousSold = line.soldQuantity;
-    const addedBack = previousSold - qty;
-
     setSubmitting(line.saleMovementId);
     setError("");
     setSuccess("");
@@ -197,8 +210,8 @@ export function ClientReturnPanel({
         baseUnit: line.baseUnit,
       };
 
-      if (result.inventoryDelta !== addedBack) {
-        setError("Server inventory change did not match the requested update");
+      if (result.inventoryDelta === undefined) {
+        setError("Server did not confirm the inventory change");
         return;
       }
 
@@ -311,6 +324,8 @@ export function ClientReturnPanel({
                       <div className="flex justify-center py-8">
                         <LoadingSpinner />
                       </div>
+                    ) : detailErrors[item.id] ? (
+                      <Alert message={detailErrors[item.id]} />
                     ) : invoice ? (
                       <div className="space-y-4">
                         <div>

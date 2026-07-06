@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { Pagination } from "@/components/ui/Pagination";
 import { usePagination } from "@/hooks/usePagination";
+import { useAuth } from "@/contexts/AuthContext";
 import { api, ApiError } from "@/lib/api/client";
+import { hasPermission, isAdminRole, Permission } from "@/lib/auth/permissions";
 import { fetchInvoiceSearchSuggestions } from "@/lib/search/productSearchSuggestions";
 import type { PaginationMeta } from "@/types/pagination";
 import type { InvoiceGroup, InvoiceGroupLine } from "@/types/stock";
@@ -28,6 +30,13 @@ function toLineDraft(line: InvoiceGroupLine) {
 }
 
 export function WrongInvoicePanel() {
+  const { user } = useAuth();
+  const canAdjust = useMemo(
+    () =>
+      isAdminRole(user?.role ?? "") ||
+      hasPermission(user?.role ?? "", user?.permissions, Permission.INVENTORY_ADJUST),
+    [user]
+  );
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [groups, setGroups] = useState<InvoiceGroup[]>([]);
@@ -328,6 +337,7 @@ export function WrongInvoicePanel() {
         <div className="space-y-4">
           <InvoiceGroupedTable
             groups={groups}
+            canAdjust={canAdjust}
             lastWorkedMovementId={lastWorkedMovementId}
             groupDrafts={groupDrafts}
             lineDrafts={lineDrafts}
