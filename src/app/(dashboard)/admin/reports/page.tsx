@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { Fragment, useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { ButtonSelect } from "@/components/ui/ButtonSelect";
@@ -12,9 +12,10 @@ import {
   usesStockUnit,
 } from "@/lib/products/productUnits";
 import type { Brand, Product, Warehouse } from "@/types/master";
-import type { ReportFilters, ReportResult, ReportType } from "@/types/reports";
+import type { ReportFilters, ReportResult, ReportType, SalesByClientInvoice } from "@/types/reports";
 
 const META_COLUMNS = new Set(["stockUnit", "unitsPerStockUnit", "baseUnit"]);
+const HIDDEN_COLUMNS = new Set([...META_COLUMNS, "invoices"]);
 const QUANTITY_COLUMNS = new Set(["quantity", "totalUnits", "totalQuantity"]);
 
 const REPORT_OPTIONS: { value: ReportType; label: string }[] = [
@@ -137,6 +138,7 @@ export default function AdminReportsPage() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [quantityMode, setQuantityMode] = useState<QuantityEntryMode>("stockUnit");
+  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     Promise.all([api.warehouses.list(true), api.brands.list()]).then(([w, b]) => {
@@ -152,6 +154,10 @@ export default function AdminReportsPage() {
       setProducts([]);
     }
   }, [filters.brandId]);
+
+  useEffect(() => {
+    setExpandedClients(new Set());
+  }, [reportType, filters]);
 
   const runReport = useCallback(async () => {
     setLoading(true);
@@ -189,6 +195,19 @@ export default function AdminReportsPage() {
   const numericCols = numericColumns(columns, result);
   const showQuantityToggle = reportHasStockUnitRows(result, columns);
   const quantityToggleProduct = findToggleProduct(result, columns);
+  const isSalesByClient = reportType === "sales-client";
+
+  function toggleClientExpanded(clientName: string) {
+    setExpandedClients((prev) => {
+      const next = new Set(prev);
+      if (next.has(clientName)) {
+        next.delete(clientName);
+      } else {
+        next.add(clientName);
+      }
+      return next;
+    });
+  }
 
   return (
     <div className="space-y-6 text-zinc-900">
@@ -375,6 +394,9 @@ export default function AdminReportsPage() {
                 {result?.groupBy && (
                   <span className="text-stone-400">· grouped by {result.groupBy}</span>
                 )}
+                {isSalesByClient && (result?.rows.length ?? 0) > 0 ? (
+                  <span className="text-stone-400">· click a client to view invoices</span>
+                ) : null}
               </>
             )}
           </p>
@@ -382,6 +404,9 @@ export default function AdminReportsPage() {
             <table className="w-full text-left text-sm">
               <thead className="sticky top-0 z-10 bg-orange-50 text-xs font-bold uppercase tracking-wide text-orange-800 shadow-[inset_0_-1px_0_rgba(0,0,0,0.08)]">
                 <tr>
+                  {isSalesByClient ? (
+                    <th className="w-10 px-3 py-3.5" aria-hidden />
+                  ) : null}
                   {columns.map((col) => (
                     <th
                       key={col}
@@ -410,63 +435,80 @@ export default function AdminReportsPage() {
                 {!result || result.rows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={columns.length}
+                      colSpan={columns.length + (isSalesByClient ? 1 : 0)}
                       className="px-5 py-10 text-center text-base font-medium text-stone-400"
                     >
                       No data for selected filters
                     </td>
                   </tr>
+                ) : isSalesByClient ? (
+                  result.rows.map((row, i) => {
+                    const clientName = String(row.clientName ?? "");
+                    const invoices = parseClientInvoices(row.invoices);
+                    const isExpanded = expandedClients.has(clientName);
+                    const canExpand = invoices.length > 0;
+
+                    return (
+                      <Fragment key={`${clientName}-${i}`}>
+                        <tr
+                          className={`border-t border-stone-100 transition-colors odd:bg-white even:bg-stone-50/50 ${
+                            canExpand
+                              ? "cursor-pointer hover:bg-orange-50/60"
+                              : "hover:bg-orange-50/60"
+                          } ${isExpanded ? "bg-orange-50/40" : ""}`}
+                          onClick={
+                            canExpand ? () => toggleClientExpanded(clientName) : undefined
+                          }
+                          aria-expanded={canExpand ? isExpanded : undefined}
+                        >
+                          <td className="px-3 py-3 text-center text-stone-400">
+                            {canExpand ? (
+                              <span
+                                className="inline-block text-xs transition-transform"
+                                aria-hidden
+                              >
+                                {isExpanded ? "▼" : "▶"}
+                              </span>
+                            ) : null}
+                          </td>
+                          {columns.map((col, colIndex) =>
+                            renderReportCell({
+                              col,
+                              colIndex,
+                              row,
+                              numericCols,
+                              quantityMode,
+                            })
+                          )}
+                        </tr>
+                        {isExpanded && invoices.length > 0 ? (
+                          <tr className="border-t border-orange-100 bg-orange-50/30">
+                            <td colSpan={columns.length + 1} className="px-5 py-4">
+                              <SalesByClientInvoiceDetails
+                                invoices={invoices}
+                                quantityMode={quantityMode}
+                              />
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })
                 ) : (
                   result!.rows.map((row, i) => (
                     <tr
                       key={i}
                       className="border-t border-stone-100 transition-colors odd:bg-white even:bg-stone-50/50 hover:bg-orange-50/60"
                     >
-                      {columns.map((col, colIndex) => {
-                        const unitsPer = Number(row.unitsPerStockUnit);
-                        const rowProduct = {
-                          stockUnit:
-                            typeof row.stockUnit === "string" ? row.stockUnit : undefined,
-                          unitsPerStockUnit: Number.isFinite(unitsPer) ? unitsPer : undefined,
-                          baseUnit:
-                            typeof row.baseUnit === "string" ? row.baseUnit : undefined,
-                        };
-                        const showStockUnits =
-                          QUANTITY_COLUMNS.has(col) &&
-                          typeof row[col] === "number" &&
-                          usesStockUnit(rowProduct);
-                        return (
-                          <td
-                            key={col}
-                            className={`px-5 py-3 ${
-                              numericCols.has(col)
-                                ? "text-right font-bold tabular-nums text-stone-900"
-                                : colIndex === 0
-                                  ? "font-semibold text-stone-900"
-                                  : "text-stone-600"
-                            }`}
-                          >
-                            {showStockUnits ? (
-                              quantityMode === "units" ? (
-                                <span className="whitespace-nowrap">
-                                  {formatBaseUnits(row[col] as number, rowProduct)}
-                                </span>
-                              ) : (
-                                <StockQuantityDisplay
-                                  quantity={row[col] as number}
-                                  stockUnit={rowProduct.stockUnit}
-                                  unitsPerStockUnit={rowProduct.unitsPerStockUnit}
-                                  baseUnit={rowProduct.baseUnit}
-                                  size="sm"
-                                  align="right"
-                                />
-                              )
-                            ) : (
-                              formatCell(row[col])
-                            )}
-                          </td>
-                        );
-                      })}
+                      {columns.map((col, colIndex) =>
+                        renderReportCell({
+                          col,
+                          colIndex,
+                          row,
+                          numericCols,
+                          quantityMode,
+                        })
+                      )}
                     </tr>
                   ))
                 )}
@@ -496,7 +538,7 @@ function numericColumns(
 
 function getColumns(type: ReportType, result: ReportResult | null): string[] {
   if (!result?.rows.length) return COLUMN_MAP[type];
-  const keys = Object.keys(result.rows[0]).filter((k) => !META_COLUMNS.has(k));
+  const keys = Object.keys(result.rows[0]).filter((k) => !HIDDEN_COLUMNS.has(k));
   const preferred = COLUMN_MAP[type].filter((k) => keys.includes(k));
   const rest = keys.filter((k) => !preferred.includes(k));
   return [...preferred, ...rest];
@@ -560,6 +602,182 @@ function findToggleProduct(
     }
   }
   return null;
+}
+
+function parseClientInvoices(value: unknown): SalesByClientInvoice[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is SalesByClientInvoice =>
+      typeof item === "object" &&
+      item != null &&
+      typeof (item as SalesByClientInvoice).invoiceNumber === "string" &&
+      Array.isArray((item as SalesByClientInvoice).lines)
+  );
+}
+
+function renderReportCell({
+  col,
+  colIndex,
+  row,
+  numericCols,
+  quantityMode,
+}: {
+  col: string;
+  colIndex: number;
+  row: Record<string, unknown>;
+  numericCols: Set<string>;
+  quantityMode: QuantityEntryMode;
+}) {
+  const rowProduct = rowProductUnits(row);
+  const showStockUnits =
+    QUANTITY_COLUMNS.has(col) &&
+    typeof row[col] === "number" &&
+    usesStockUnit(rowProduct);
+
+  return (
+    <td
+      key={col}
+      className={`px-5 py-3 ${
+        numericCols.has(col)
+          ? "text-right font-bold tabular-nums text-stone-900"
+          : colIndex === 0
+            ? "font-semibold text-stone-900"
+            : "text-stone-600"
+      }`}
+    >
+      {showStockUnits ? (
+        quantityMode === "units" ? (
+          <span className="whitespace-nowrap">
+            {formatBaseUnits(row[col] as number, rowProduct)}
+          </span>
+        ) : (
+          <StockQuantityDisplay
+            quantity={row[col] as number}
+            stockUnit={rowProduct.stockUnit}
+            unitsPerStockUnit={rowProduct.unitsPerStockUnit}
+            baseUnit={rowProduct.baseUnit}
+            size="sm"
+            align="right"
+          />
+        )
+      ) : (
+        formatCell(row[col])
+      )}
+    </td>
+  );
+}
+
+function SalesByClientInvoiceDetails({
+  invoices,
+  quantityMode,
+}: {
+  invoices: SalesByClientInvoice[];
+  quantityMode: QuantityEntryMode;
+}) {
+  return (
+    <div className="space-y-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">
+        Invoices ({invoices.length})
+      </p>
+      {invoices.map((invoice) => (
+        <div
+          key={`${invoice.invoiceNumber}-${invoice.warehouse}`}
+          className="overflow-hidden rounded-xl border border-stone-200 bg-white"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 bg-stone-50/80 px-4 py-2.5">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-stone-900">
+                {invoice.invoiceNumber || "—"}
+              </p>
+              <p className="text-xs text-stone-500">
+                {formatCell(invoice.date)} · {invoice.warehouse}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-stone-400">
+                Invoice total
+              </p>
+              <ReportQuantityValue
+                quantity={invoice.totalQuantity}
+                product={invoice.lines[0]}
+                quantityMode={quantityMode}
+                align="right"
+              />
+            </div>
+          </div>
+          <table className="w-full text-left text-sm">
+            <thead className="bg-white text-[10px] font-bold uppercase tracking-wide text-stone-400">
+              <tr>
+                <th className="px-4 py-2 text-left">Product</th>
+                <th className="px-4 py-2 text-left">Brand</th>
+                <th className="px-4 py-2 text-right">Quantity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoice.lines.map((line, lineIndex) => (
+                <tr
+                  key={`${line.product}-${line.brand}-${lineIndex}`}
+                  className="border-t border-stone-100"
+                >
+                  <td className="px-4 py-2 font-medium text-stone-800">{line.product}</td>
+                  <td className="px-4 py-2 text-stone-600">{line.brand}</td>
+                  <td className="px-4 py-2 text-right">
+                    <ReportQuantityValue
+                      quantity={line.quantity}
+                      product={line}
+                      quantityMode={quantityMode}
+                      align="right"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReportQuantityValue({
+  quantity,
+  product,
+  quantityMode,
+  align,
+}: {
+  quantity: number;
+  product?: {
+    stockUnit?: string;
+    unitsPerStockUnit?: number;
+    baseUnit?: string;
+  };
+  quantityMode: QuantityEntryMode;
+  align: "left" | "right";
+}) {
+  const rowProduct = {
+    stockUnit: product?.stockUnit,
+    unitsPerStockUnit: product?.unitsPerStockUnit,
+    baseUnit: product?.baseUnit,
+  };
+
+  if (quantityMode === "units" || !usesStockUnit(rowProduct)) {
+    return (
+      <span className="whitespace-nowrap font-bold tabular-nums text-stone-900">
+        {formatBaseUnits(quantity, rowProduct)}
+      </span>
+    );
+  }
+
+  return (
+    <StockQuantityDisplay
+      quantity={quantity}
+      stockUnit={rowProduct.stockUnit}
+      unitsPerStockUnit={rowProduct.unitsPerStockUnit}
+      baseUnit={rowProduct.baseUnit}
+      size="sm"
+      align={align}
+    />
+  );
 }
 
 function FilterSelect({

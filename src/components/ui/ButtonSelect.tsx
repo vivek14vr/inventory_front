@@ -17,6 +17,7 @@ type ButtonSelectProps = {
   disabled?: boolean;
   emptyMessage?: string;
   className?: string;
+  optionsClassName?: string;
 };
 
 /**
@@ -33,6 +34,7 @@ export function ButtonSelect({
   disabled,
   emptyMessage = "No options",
   className = "",
+  optionsClassName = "",
 }: ButtonSelectProps) {
   const containerClass =
     layout === "grid"
@@ -49,7 +51,9 @@ export function ButtonSelect({
       {label && (
         <span className="block text-sm font-semibold text-stone-700">{label}</span>
       )}
-      <div className={`${label ? "mt-2" : ""} ${containerClass}`}>
+      <div
+        className={`${label ? "mt-2" : ""} ${containerClass} ${optionsClassName}`.trim()}
+      >
         {options.length === 0 ? (
           <p className="text-sm font-medium text-stone-400">{emptyMessage}</p>
         ) : (

@@ -8,7 +8,7 @@ export default function AppWrongInvoicePage() {
     <div className="space-y-6 text-zinc-900">
       <PageHeader
         title="Invoices"
-        description="Correct client names, invoice numbers, and delete incorrect sale invoices when you have inventory adjustment access."
+        description="View invoice records and correct product quantities on sales lines."
       />
       <WrongInvoicePanel />
     </div>

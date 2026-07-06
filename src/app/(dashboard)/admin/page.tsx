@@ -192,6 +192,36 @@ export default function AdminDashboardPage() {
             </div>
           </section>
 
+          <section>
+            <h2 className="mb-4 text-lg font-bold text-stone-800">Import from Excel</h2>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:max-w-4xl">
+              <QuickActionCard
+                href={`${AUTH_ROUTES.adminImports}?mode=products`}
+                title="Import products"
+                description="Upload product catalog spreadsheet"
+                iconLabel="Imports"
+                size="large"
+                color="teal"
+              />
+              <QuickActionCard
+                href={`${AUTH_ROUTES.adminImports}?mode=clients`}
+                title="Import clients"
+                description="Upload client list spreadsheet"
+                iconLabel="Import Clients"
+                size="large"
+                color="sky"
+              />
+              <QuickActionCard
+                href={`${AUTH_ROUTES.adminImports}?mode=sales`}
+                title="Import sales"
+                description="Direct sell from Tally register"
+                iconLabel="Import Sales"
+                size="large"
+                color="violet"
+              />
+            </div>
+          </section>
+
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label="Total quantity"

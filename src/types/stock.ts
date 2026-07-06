@@ -19,7 +19,7 @@ export type StockMovement = {
   clientName?: string;
   invoiceNumber?: string;
   notes?: string;
-  invoiceLastWorkedAt?: string;
+  invoiceModificationCount?: number;
   product?: {
     id: string;
     name: string;
@@ -87,7 +87,7 @@ export type InvoiceGroupLine = {
   baseUnit?: string;
   type: "STOCK_IN" | "STOCK_OUT";
   dispatchType?: string;
-  invoiceLastWorkedAt?: string;
+  invoiceModificationCount?: number;
   createdAt: string;
 };
 
@@ -98,7 +98,7 @@ export type InvoiceGroup = {
   createdAt: string;
   voucherType: string;
   warehouse?: { id: string; name: string; code: string };
-  lastWorkedMovementId?: string;
+  modificationCount: number;
   lines: InvoiceGroupLine[];
 };
 

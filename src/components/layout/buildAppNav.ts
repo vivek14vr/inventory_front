@@ -103,6 +103,14 @@ export function buildAppNavGroups(
   }
   if (
     hasAnyPermission(role, permissions, [
+      Permission.CLIENTS_VIEW,
+      Permission.CLIENTS_MANAGE,
+    ])
+  ) {
+    moreMenu.push({ href: AUTH_ROUTES.appClients, label: "Clients" });
+  }
+  if (
+    hasAnyPermission(role, permissions, [
       Permission.PRODUCTS_VIEW,
       Permission.PRODUCTS_MANAGE,
     ])

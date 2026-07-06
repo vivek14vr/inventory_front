@@ -24,6 +24,15 @@ export type Brand = {
   updatedAt?: string;
 };
 
+export type Client = {
+  id: string;
+  name: string;
+  secondaryName?: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type Product = {
   id: string;
   name: string;
@@ -47,6 +56,8 @@ export type Product = {
     warehouseCode: string;
     lowStockThreshold: number;
   }>;
+  /** Total stock across all warehouses (when requested). */
+  totalStock?: number;
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;

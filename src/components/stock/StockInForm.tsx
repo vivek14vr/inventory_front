@@ -16,6 +16,7 @@ import {
   type QuantityEntryMode,
 } from "@/lib/products/productUnits";
 import { matchesProductSearch } from "@/lib/products/productNames";
+import { validatePositiveInteger } from "@/lib/validation/quantity";
 import { productSelectionGridItem } from "@/lib/products/productSelectionGrid";
 import { useWarehouseProductBalances } from "@/hooks/useWarehouseProductBalances";
 import { StockQuantityEntry } from "@/components/stock/StockQuantityEntry";
@@ -211,6 +212,12 @@ export function StockInForm({
       const baseQty = transfer
         ? enteredQty
         : quantityEntryToBase(enteredQty, quantityMode, selectedProduct);
+      const qtyError = validatePositiveInteger(baseQty);
+      if (qtyError) {
+        setError(qtyError);
+        setSubmitting(false);
+        return;
+      }
       const result = await api.stock.stockIn({
         ...(whId ? { warehouseId: whId } : {}),
         brandId,

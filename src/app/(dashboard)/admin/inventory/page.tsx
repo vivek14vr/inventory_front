@@ -42,6 +42,16 @@ import { ThresholdUnitToggle } from "@/components/products/ThresholdUnitToggle";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import { SearchInputWithSuggestions } from "@/components/search/SearchInputWithSuggestions";
 import { createAdminInventoryProductSuggestions } from "@/lib/search/productSearchSuggestions";
+import {
+  validateNonNegativeInteger,
+  validatePositiveInteger,
+} from "@/lib/validation/quantity";
+import {
+  printCurrentStockReport,
+  printLowStockReport,
+  printMovementsReport,
+  type CheckStockPdfFilters,
+} from "@/lib/reports/checkStockPdf";
 import type {
   LowStockProductRow,
   LowStockResponse,
@@ -85,6 +95,73 @@ const LOW_STOCK_SORT_OPTIONS: { value: LowStockSortField; label: string }[] = [
   { value: "lowStockThreshold", label: "Threshold" },
 ];
 
+const TAB_LABELS: Record<Tab, string> = {
+  stock: "Current stock",
+  movements: "Movements",
+  "low-stock": "Low stock",
+};
+
+const PDF_PAGE_LIMIT = 100;
+const PDF_MAX_PAGES = 100;
+
+async function fetchAllStockForPdf(
+  base: Parameters<typeof api.inventory.stock>[0]
+): Promise<StockResponse> {
+  const products: StockProductRow[] = [];
+  let data: StockResponse | null = null;
+
+  for (let page = 1; page <= PDF_MAX_PAGES; page++) {
+    const result = await api.inventory.stock({ ...base, page, limit: PDF_PAGE_LIMIT });
+    if (!data) {
+      data = result.data;
+    }
+    products.push(...(result.data.products ?? []));
+    if (!result.pagination.hasNextPage) break;
+  }
+
+  if (!data) {
+    throw new Error("No stock data to export");
+  }
+
+  return { ...data, products };
+}
+
+async function fetchAllMovementsForPdf(
+  base: Parameters<typeof api.inventory.movements>[0]
+): Promise<StockMovement[]> {
+  const items: StockMovement[] = [];
+
+  for (let page = 1; page <= PDF_MAX_PAGES; page++) {
+    const result = await api.inventory.movements({ ...base, page, limit: PDF_PAGE_LIMIT });
+    items.push(...result.items);
+    if (!result.pagination.hasNextPage) break;
+  }
+
+  return items;
+}
+
+async function fetchAllLowStockForPdf(
+  base: Parameters<typeof api.inventory.lowStock>[0]
+): Promise<LowStockResponse> {
+  const items: LowStockProductRow[] = [];
+  let data: LowStockResponse | null = null;
+
+  for (let page = 1; page <= PDF_MAX_PAGES; page++) {
+    const result = await api.inventory.lowStock({ ...base, page, limit: PDF_PAGE_LIMIT });
+    if (!data) {
+      data = result.data;
+    }
+    items.push(...(result.data.items ?? []));
+    if (!result.pagination.hasNextPage) break;
+  }
+
+  if (!data) {
+    throw new Error("No low-stock data to export");
+  }
+
+  return { ...data, items, count: items.length };
+}
+
 function AdminInventoryPageContent() {
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<Tab>("stock");
@@ -106,6 +183,7 @@ function AdminInventoryPageContent() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [lowStockQuantityMode, setLowStockQuantityMode] =
     useState<QuantityEntryMode>("stockUnit");
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const { page, setPage, limit, setLimit, resetPage } = usePagination(20);
 
@@ -203,6 +281,56 @@ function AdminInventoryPageContent() {
         ? MOVEMENT_SORT_OPTIONS
         : LOW_STOCK_SORT_OPTIONS;
 
+  function buildPdfFilters(): CheckStockPdfFilters {
+    return {
+      tab,
+      tabLabel: TAB_LABELS[tab],
+      warehouseName: warehouses.find((w) => w.id === warehouseId)?.name,
+      brandName: brands.find((b) => b.id === brandId)?.name,
+      search: search.trim() || undefined,
+      movementType: movementType || undefined,
+      sortBy,
+      sortOrder,
+    };
+  }
+
+  async function downloadPdf() {
+    setPdfLoading(true);
+    setError("");
+    try {
+      const base = {
+        sortBy,
+        sortOrder,
+        includeZero: true,
+        ...(search.trim() ? { search: search.trim() } : {}),
+        ...(warehouseId ? { warehouseId } : {}),
+        ...(brandId ? { brandId } : {}),
+      };
+      const filters = buildPdfFilters();
+
+      if (tab === "stock") {
+        const data = await fetchAllStockForPdf(base);
+        printCurrentStockReport(data, {
+          filters,
+          showTotalColumn: !warehouseId,
+        });
+      } else if (tab === "movements") {
+        const items = await fetchAllMovementsForPdf({
+          ...base,
+          ...(movementType ? { type: movementType } : {}),
+        });
+        printMovementsReport(items, filters);
+      } else {
+        const data = await fetchAllLowStockForPdf(base);
+        printLowStockReport(data, filters, lowStockQuantityMode);
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to generate PDF");
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
   return (
     <div className="space-y-6 text-zinc-900">
       <PageHeader
@@ -238,36 +366,55 @@ function AdminInventoryPageContent() {
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-3 rounded-xl border border-zinc-200/80 bg-white p-4 shadow-sm">
-        <FilterField label="Search">
-          <SearchInputWithSuggestions
-            value={search}
-            onChange={(value) => {
-              setSearch(value);
-              resetPage();
-            }}
-            onSelect={(suggestion) => {
-              setSearch(suggestion.searchTerm);
-              resetPage();
-            }}
-            fetchSuggestions={fetchProductSuggestions}
-            placeholder="Product, brand, warehouse…"
-            ariaLabel="Search inventory"
-            inputClassName="w-full min-w-[200px] rounded-lg border border-zinc-200 bg-white px-3 py-1.5 pl-10 text-sm shadow-sm focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
-            emptyMessage={(term) => `No products match “${term}”`}
+      <div className="space-y-4 rounded-xl border border-zinc-200/80 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+          <FilterField label="Search" className="min-w-0 flex-1 lg:max-w-xl">
+            <SearchInputWithSuggestions
+              value={search}
+              onChange={(value) => {
+                setSearch(value);
+                resetPage();
+              }}
+              onSelect={(suggestion) => {
+                setSearch(suggestion.searchTerm);
+                resetPage();
+              }}
+              fetchSuggestions={fetchProductSuggestions}
+              placeholder="Product, brand, warehouse…"
+              ariaLabel="Search inventory"
+              inputClassName="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 pl-10 text-sm shadow-sm focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+              emptyMessage={(term) => `No products match “${term}”`}
+            />
+          </FilterField>
+          <FilterSelect
+            label="Warehouse"
+            className="w-full shrink-0 lg:w-auto lg:min-w-[14rem]"
+            value={warehouseId}
+            onChange={(v) => handleFilterChange(setWarehouseId, v)}
+            options={[
+              { value: "", label: "All" },
+              ...warehouses.map((w) => ({ value: w.id, label: w.name })),
+            ]}
           />
-        </FilterField>
-        <FilterSelect
-          label="Warehouse"
-          value={warehouseId}
-          onChange={(v) => handleFilterChange(setWarehouseId, v)}
-          options={[
-            { value: "", label: "All" },
-            ...warehouses.map((w) => ({ value: w.id, label: w.name })),
-          ]}
-        />
+          {tab === "movements" ? (
+            <FilterSelect
+              label="Type"
+              className="w-full shrink-0 lg:w-auto lg:min-w-[10rem]"
+              value={movementType}
+              onChange={(v) => handleFilterChange(setMovementType, v)}
+              options={[
+                { value: "", label: "All" },
+                { value: "STOCK_IN", label: "Stock In" },
+                { value: "STOCK_OUT", label: "Stock Out" },
+              ]}
+            />
+          ) : null}
+        </div>
+
         <FilterSelect
           label="Brand"
+          className="w-full"
+          optionsClassName="max-h-36 overflow-y-auto pr-1"
           value={brandId}
           onChange={(v) => handleFilterChange(setBrandId, v)}
           options={[
@@ -275,54 +422,62 @@ function AdminInventoryPageContent() {
             ...brands.map((b) => ({ value: b.id, label: b.name })),
           ]}
         />
-        {tab === "movements" && (
-          <FilterSelect
-            label="Type"
-            value={movementType}
-            onChange={(v) => handleFilterChange(setMovementType, v)}
+
+        <div className="flex flex-wrap items-end gap-3 border-t border-zinc-100 pt-4">
+          <SelectMenu
+            label="Sort by"
+            className="min-w-[10rem]"
+            value={sortBy}
+            onChange={(v) => {
+              setSortBy(v);
+              resetPage();
+            }}
+            options={sortOptions.map((o) => ({ value: o.value, label: o.label }))}
+          />
+          <SelectMenu
+            label="Order"
+            className="min-w-[9rem]"
+            value={sortOrder}
+            onChange={(v) => {
+              setSortOrder(v as "asc" | "desc");
+              resetPage();
+            }}
             options={[
-              { value: "", label: "All" },
-              { value: "STOCK_IN", label: "Stock In" },
-              { value: "STOCK_OUT", label: "Stock Out" },
+              { value: "asc", label: "Ascending" },
+              { value: "desc", label: "Descending" },
             ]}
           />
-        )}
-        <SelectMenu
-          label="Sort by"
-          value={sortBy}
-          onChange={(v) => {
-            setSortBy(v);
-            resetPage();
-          }}
-          options={sortOptions.map((o) => ({ value: o.value, label: o.label }))}
-        />
-        <SelectMenu
-          label="Order"
-          value={sortOrder}
-          onChange={(v) => {
-            setSortOrder(v as "asc" | "desc");
-            resetPage();
-          }}
-          options={[
-            { value: "asc", label: "Ascending" },
-            { value: "desc", label: "Descending" },
-          ]}
-        />
-        {tab === "low-stock" ? (
-          <div className="flex min-w-[12rem] flex-col gap-1">
-            <span className="text-xs font-medium text-zinc-500">Quantities in</span>
-            <ThresholdUnitToggle
-              mode={lowStockQuantityMode}
-              onModeChange={setLowStockQuantityMode}
-              product={
-                lowStock?.items.find((item) => usesStockUnit(item)) ??
-                lowStock?.items[0] ??
-                null
-              }
+          {tab === "low-stock" ? (
+            <div className="flex min-w-[12rem] flex-col gap-1">
+              <span className="text-xs font-medium text-zinc-500">Quantities in</span>
+              <ThresholdUnitToggle
+                mode={lowStockQuantityMode}
+                onModeChange={setLowStockQuantityMode}
+                product={
+                  lowStock?.items.find((item) => usesStockUnit(item)) ??
+                  lowStock?.items[0] ??
+                  null
+                }
+                size="sm"
+                alwaysShow
+                fallbackStockUnitLabel="Boxes"
+                fallbackBaseUnitLabel="Units"
+              />
+            </div>
+          ) : null}
+          <div className="ml-auto flex shrink-0 items-end">
+            <Button
+              type="button"
+              variant="secondary"
               size="sm"
-            />
+              loading={pdfLoading}
+              disabled={loading}
+              onClick={() => void downloadPdf()}
+            >
+              Download PDF
+            </Button>
           </div>
-        ) : null}
+        </div>
       </div>
 
       <Alert message={error} />
@@ -336,6 +491,7 @@ function AdminInventoryPageContent() {
       ) : tab === "stock" && stock ? (
         <StockView
           data={stock}
+          showTotalColumn={!warehouseId}
           onUpdated={() => {
             setSuccess("Stock quantity updated");
             load();
@@ -511,10 +667,12 @@ function ProductDetailCell({
 
 function StockView({
   data,
+  showTotalColumn = true,
   onUpdated,
   onError,
 }: {
   data: StockResponse;
+  showTotalColumn?: boolean;
   onUpdated: () => void;
   onError: (message: string) => void;
 }) {
@@ -559,7 +717,9 @@ function StockView({
                     </th>
                   </Fragment>
                 ))}
-                <th className="px-4 py-3.5 text-left align-bottom">Total</th>
+                {showTotalColumn ? (
+                  <th className="px-4 py-3.5 text-left align-bottom">Total</th>
+                ) : null}
                 <th className="sticky right-0 z-10 whitespace-nowrap bg-orange-50 px-4 py-3.5 text-right align-bottom">
                   Actions
                 </th>
@@ -569,7 +729,7 @@ function StockView({
               {products.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={warehouseColumns.length * 2 + 3}
+                    colSpan={warehouseColumns.length * 2 + (showTotalColumn ? 3 : 2)}
                     className="px-5 py-10 text-center text-base font-medium text-stone-400"
                   >
                     No products found
@@ -625,17 +785,19 @@ function StockView({
                           </Fragment>
                         );
                       })}
-                      <td className="px-4 py-3.5 text-left">
-                        <StockQuantityDisplay
-                          quantity={product.totalQuantity}
-                          stockUnit={product.stockUnit}
-                          unitsPerStockUnit={product.unitsPerStockUnit}
-                          baseUnit={product.baseUnit}
-                          size="md"
-                          align="left"
-                          className="text-orange-800 [&_span:first-child]:!text-orange-800"
-                        />
-                      </td>
+                      {showTotalColumn ? (
+                        <td className="px-4 py-3.5 text-left">
+                          <StockQuantityDisplay
+                            quantity={product.totalQuantity}
+                            stockUnit={product.stockUnit}
+                            unitsPerStockUnit={product.unitsPerStockUnit}
+                            baseUnit={product.baseUnit}
+                            size="md"
+                            align="left"
+                            className="text-orange-800 [&_span:first-child]:!text-orange-800"
+                          />
+                        </td>
+                      ) : null}
                       <td className="sticky right-0 z-10 w-px bg-inherit px-4 py-3.5 align-top">
                         <div className="flex flex-col items-stretch gap-2">
                           <ButtonLink
@@ -723,19 +885,21 @@ function StockView({
                     product={product}
                     linkWarehouseId={detailLinkLocation?.warehouseId}
                   />
-                  <div className="shrink-0 text-right">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-orange-600/80">
-                      Total
-                    </p>
-                    <StockQuantityDisplay
-                      quantity={product.totalQuantity}
-                      stockUnit={product.stockUnit}
-                      unitsPerStockUnit={product.unitsPerStockUnit}
-                      size="md"
-                      align="right"
-                      className="text-orange-800 [&_span:first-child]:!text-orange-800"
-                    />
-                  </div>
+                  {showTotalColumn ? (
+                    <div className="shrink-0 text-right">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-orange-600/80">
+                        Total
+                      </p>
+                      <StockQuantityDisplay
+                        quantity={product.totalQuantity}
+                        stockUnit={product.stockUnit}
+                        unitsPerStockUnit={product.unitsPerStockUnit}
+                        size="md"
+                        align="right"
+                        className="text-orange-800 [&_span:first-child]:!text-orange-800"
+                      />
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="divide-y divide-stone-100">
@@ -908,8 +1072,14 @@ function AdjustStockDialog({
     if (usesUnits) {
       const full = parseInt(fullUnits, 10);
       const looseQty = parseInt(loose, 10);
-      if (Number.isNaN(full) || full < 0 || Number.isNaN(looseQty) || looseQty < 0) {
-        onError("Enter valid carton and loose counts (0 or greater)");
+      if (Number.isNaN(full) || Number.isNaN(looseQty)) {
+        onError("Enter valid carton and loose counts");
+        return;
+      }
+      const fullError = validateNonNegativeInteger(full, "Carton count");
+      const looseError = validateNonNegativeInteger(looseQty, "Loose count");
+      if (fullError || looseError) {
+        onError(fullError ?? looseError ?? "Quantity cannot be negative");
         return;
       }
       const per = row.unitsPerStockUnit ?? 1;
@@ -920,8 +1090,9 @@ function AdjustStockDialog({
       qty = stockUnitsAndLooseToBase(full, looseQty, productUnits);
     } else {
       qty = parseInt(quantity, 10);
-      if (Number.isNaN(qty) || qty < 0) {
-        onError("Enter a valid quantity (0 or greater)");
+      const qtyError = validateNonNegativeInteger(qty);
+      if (Number.isNaN(qty) || qtyError) {
+        onError(qtyError ?? "Enter a valid quantity (0 or greater)");
         return;
       }
     }
@@ -937,8 +1108,9 @@ function AdjustStockDialog({
       thresholdValue = null;
     } else {
       const parsedThreshold = parseInt(thresholdInput, 10);
-      if (!Number.isFinite(parsedThreshold) || parsedThreshold < 0) {
-        onError("Enter a valid low-stock threshold (0 or greater)");
+      const thresholdError = validateNonNegativeInteger(parsedThreshold, "Low-stock threshold");
+      if (!Number.isFinite(parsedThreshold) || thresholdError) {
+        onError(thresholdError ?? "Enter a valid low-stock threshold (0 or greater)");
         return;
       }
       thresholdValue = parsedThreshold;

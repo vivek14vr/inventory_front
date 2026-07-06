@@ -2,7 +2,7 @@ import { refreshAccessToken } from "@/lib/api/authSession";
 import { apiUrl, buildApiUrl } from "@/lib/api/base";
 import { getAccessTokenIfValid, getRefreshToken } from "@/lib/auth/token";
 import type { AuthUser, LoginResponse, PublicUser } from "@/types/auth";
-import type { Brand, Product, ProductWarehouseThreshold, Warehouse } from "@/types/master";
+import type { Brand, Client, Product, ProductWarehouseThreshold, Warehouse } from "@/types/master";
 import type {
   AdminDashboard,
   LowStockProductRow,
@@ -12,6 +12,9 @@ import type {
   StockResponse,
 } from "@/types/inventory";
 import type {
+  ClientImportPreview,
+  ClientImportResult,
+  ClientImportRowDecision,
   ProductImportPreview,
   ProductImportResult,
   ProductImportRowDecision,
@@ -268,17 +271,40 @@ export const api = {
       }),
   },
 
+  clients: {
+    list: (includeInactive?: boolean) =>
+      apiClient<Client[]>("/clients", {
+        params: includeInactive ? { includeInactive: "true" } : undefined,
+      }),
+    get: (id: string) => apiClient<Client>(`/clients/${id}`),
+    create: (data: { name: string; secondaryName?: string; isActive?: boolean }) =>
+      apiClient<Client>("/clients", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    update: (
+      id: string,
+      data: Partial<{ name: string; secondaryName?: string | null; isActive: boolean }>
+    ) =>
+      apiClient<Client>(`/clients/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+  },
+
   products: {
     list: (opts?: PaginationParams & {
       includeInactive?: boolean;
       brandId?: string;
       includeWarehouseThresholds?: boolean;
+      includeStockTotals?: boolean;
     }) =>
       apiClientPaginated<Product>("/products", {
         page: opts?.page ?? 1,
         limit: opts?.limit ?? 20,
         includeInactive: opts?.includeInactive ? "true" : "false",
         ...(opts?.includeWarehouseThresholds ? { includeWarehouseThresholds: "true" } : {}),
+        ...(opts?.includeStockTotals ? { includeStockTotals: "true" } : {}),
         ...(opts?.brandId ? { brandId: opts.brandId } : {}),
         ...(opts?.search ? { search: opts.search } : {}),
         ...(opts?.sortBy ? { sortBy: opts.sortBy } : {}),
@@ -336,6 +362,10 @@ export const api = {
       apiClient<Product>(`/products/${id}`, {
         method: "PATCH",
         body: JSON.stringify(data),
+      }),
+    delete: (id: string) =>
+      apiClient<Product>(`/products/${id}`, {
+        method: "DELETE",
       }),
     warehouseThresholds: (productId: string) =>
       apiClient<ProductWarehouseThreshold[]>(
@@ -542,6 +572,8 @@ export const api = {
     listInvoiceGroups: (
       params?: PaginationParams & {
         search?: string;
+        warehouseId?: string;
+        clientId?: string;
         sortBy?: string;
         sortOrder?: "asc" | "desc";
       }
@@ -558,7 +590,7 @@ export const api = {
         invoiceNumber?: string;
         clientName?: string;
         quantity?: number;
-        markLastWorked?: boolean;
+        lineUpdates?: Array<{ movementId: string; quantity: number }>;
       }
     ) =>
       apiClient<StockMovement>(`/inventory/movements/${movementId}/invoice`, {
@@ -762,6 +794,32 @@ export const api = {
       vouchers: SalesImportConfirmVoucher[];
     }) =>
       apiClient<SalesImportResult>("/imports/sales/confirm", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    previewClients: async (file: File): Promise<ClientImportPreview> => {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetchWithAuth(apiUrl("/imports/clients/preview"), {
+        method: "POST",
+        body: form,
+      });
+      let body: ApiResponse<ClientImportPreview>;
+      try {
+        body = (await response.json()) as ApiResponse<ClientImportPreview>;
+      } catch {
+        throw new ApiError("Invalid response from server", response.status);
+      }
+      if (!response.ok || !body.success) {
+        throw new ApiError(body.message ?? "Preview failed", response.status, body.code);
+      }
+      return body.data as ClientImportPreview;
+    },
+    confirmClients: (data: {
+      fileName?: string;
+      rows: ClientImportRowDecision[];
+    }) =>
+      apiClient<ClientImportResult>("/imports/clients/confirm", {
         method: "POST",
         body: JSON.stringify(data),
       }),

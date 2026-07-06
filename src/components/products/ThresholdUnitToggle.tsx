@@ -13,6 +13,10 @@ type ThresholdUnitToggleProps = {
   onModeChange: (mode: QuantityEntryMode) => void;
   product?: Partial<ProductUnitFields> | null;
   size?: "sm" | "md";
+  /** Show generic labels when the product has no pack unit configured. */
+  alwaysShow?: boolean;
+  fallbackStockUnitLabel?: string;
+  fallbackBaseUnitLabel?: string;
 };
 
 export function ThresholdUnitToggle({
@@ -20,11 +24,19 @@ export function ThresholdUnitToggle({
   onModeChange,
   product,
   size = "md",
+  alwaysShow = false,
+  fallbackStockUnitLabel = "Boxes",
+  fallbackBaseUnitLabel = "Units",
 }: ThresholdUnitToggleProps) {
-  if (!usesStockUnit(product)) return null;
+  const hasPackUnit = usesStockUnit(product);
+  if (!hasPackUnit && !alwaysShow) return null;
 
-  const stockUnitLabel = pluralizeStockUnit(getStockUnitLabel(product), 2);
-  const baseUnitLabel = pluralizeStockUnit(getBaseUnitLabel(product), 2);
+  const stockUnitLabel = hasPackUnit
+    ? pluralizeStockUnit(getStockUnitLabel(product), 2)
+    : fallbackStockUnitLabel;
+  const baseUnitLabel = hasPackUnit
+    ? pluralizeStockUnit(getBaseUnitLabel(product), 2)
+    : fallbackBaseUnitLabel;
   const buttonClass =
     size === "sm"
       ? "rounded-md px-2.5 py-1 text-xs font-semibold"

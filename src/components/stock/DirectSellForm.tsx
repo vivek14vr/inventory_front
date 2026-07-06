@@ -15,6 +15,7 @@ import {
   type QuantityEntryMode,
 } from "@/lib/products/productUnits";
 import { matchesProductSearch } from "@/lib/products/productNames";
+import { validatePositiveInteger } from "@/lib/validation/quantity";
 import { productSelectionGridItem } from "@/lib/products/productSelectionGrid";
 import { useWarehouseProductBalances } from "@/hooks/useWarehouseProductBalances";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
@@ -322,9 +323,12 @@ export function DirectSellForm({
       return { line, baseQty };
     });
 
-    const invalid = items.find(({ baseQty }) => !Number.isFinite(baseQty) || baseQty <= 0);
+    const invalid = items.find(({ baseQty }) => validatePositiveInteger(baseQty));
     if (invalid) {
-      setError(`Enter a valid quantity for ${invalid.line.product.name}`);
+      setError(
+        validatePositiveInteger(invalid.baseQty) ??
+          `Enter a valid quantity for ${invalid.line.product.name}`
+      );
       return;
     }
 

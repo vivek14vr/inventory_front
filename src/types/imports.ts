@@ -146,12 +146,29 @@ export type SalesImportExistingProduct = {
   unitsPerStockUnit: number;
 };
 
+export type SalesImportExistingBrand = {
+  id: string;
+  name: string;
+};
+
+export type SalesImportExistingClient = {
+  id: string;
+  name: string;
+  secondaryName?: string;
+};
+
 export type SalesImportLinePreview = {
   rowNumber: number;
   productName: string;
   quantity: number;
+  brandName: string;
+  brandCategory: "matched" | "new";
   category: "matched" | "unmatched";
   errors: string[];
+  matchedBrand?: {
+    id: string;
+    name: string;
+  };
   matchedProduct?: {
     id: string;
     name: string;
@@ -167,13 +184,14 @@ export type SalesImportVoucherPreview = {
   sellDate: string;
   clientName: string;
   invoiceNumber: string;
+  clientCategory: "matched" | "new";
   errors: string[];
+  matchedClient?: {
+    id: string;
+    name: string;
+    secondaryName?: string;
+  };
   lines: SalesImportLinePreview[];
-};
-
-export type SalesImportExistingBrand = {
-  id: string;
-  name: string;
 };
 
 export type SalesImportPreview = {
@@ -185,15 +203,18 @@ export type SalesImportPreview = {
   vouchers: SalesImportVoucherPreview[];
   existingBrands: SalesImportExistingBrand[];
   existingProducts: SalesImportExistingProduct[];
+  existingClients: SalesImportExistingClient[];
 };
 
 export type SalesImportConfirmLine = {
   rowNumber: number;
   productName: string;
+  brandName: string;
   quantity: number;
+  brandAction: "merge" | "create";
+  mergeTargetBrandId?: string;
   action: "merge" | "create";
   mergeTargetProductId?: string;
-  createBrandId?: string;
 };
 
 export type SalesImportConfirmVoucher = {
@@ -201,7 +222,10 @@ export type SalesImportConfirmVoucher = {
   headerRowNumber: number;
   sellDate?: string;
   clientName: string;
+  clientSecondaryName?: string;
   invoiceNumber: string;
+  clientAction: "merge" | "create";
+  mergeTargetClientId?: string;
   lines: SalesImportConfirmLine[];
 };
 
@@ -238,6 +262,67 @@ export type SalesImportResult = {
   successCount: number;
   failedCount: number;
   createdProductCount?: number;
+  createdBrandCount?: number;
+  createdClientCount?: number;
   vouchers: SalesImportResultVoucher[];
   rows: SalesImportResultLine[];
+};
+
+export type ClientImportPreviewRow = {
+  rowNumber: number;
+  primaryName: string;
+  secondaryName?: string;
+  category: "matched" | "new";
+  errors: string[];
+  matchedClient?: {
+    id: string;
+    name: string;
+    secondaryName?: string;
+  };
+  reactivatesClient?: {
+    id: string;
+    name: string;
+  };
+};
+
+export type ClientImportExistingClient = {
+  id: string;
+  name: string;
+  secondaryName?: string;
+};
+
+export type ClientImportPreview = {
+  totalRows: number;
+  matchedCount: number;
+  newCount: number;
+  errorCount: number;
+  rows: ClientImportPreviewRow[];
+  existingClients: ClientImportExistingClient[];
+};
+
+export type ClientImportResultRow = {
+  rowNumber: number;
+  primaryName: string;
+  secondaryName?: string;
+  status: "SUCCESS" | "FAILED";
+  action: "merge" | "create";
+  mergeTargetClientId?: string;
+  message?: string;
+  clientId?: string;
+};
+
+export type ClientImportResult = {
+  fileName?: string;
+  totalRows: number;
+  successCount: number;
+  failedCount: number;
+  rows: ClientImportResultRow[];
+};
+
+export type ClientImportRowDecision = {
+  rowNumber: number;
+  primaryName: string;
+  secondaryName?: string;
+  action: "merge" | "create";
+  mergeTargetClientId?: string;
 };

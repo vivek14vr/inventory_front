@@ -25,6 +25,7 @@ const navGroups = [
       { href: AUTH_ROUTES.adminProducts, label: "Products" },
       { href: AUTH_ROUTES.adminWarehouses, label: "Warehouses" },
       { href: AUTH_ROUTES.adminBrands, label: "Brands" },
+      { href: AUTH_ROUTES.adminClients, label: "Clients" },
       { href: AUTH_ROUTES.adminUsers, label: "Users" },
       { href: AUTH_ROUTES.adminChecklists, label: "Daily Checklists" },
       { href: AUTH_ROUTES.adminNotifications, label: "Notifications" },

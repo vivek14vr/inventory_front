@@ -18,6 +18,32 @@ export type ReportFilters = {
   groupBy?: "detail" | "warehouse" | "brand" | "product";
 };
 
+export type SalesByClientInvoiceLine = {
+  product: string;
+  brand: string;
+  warehouse: string;
+  quantity: number;
+  stockUnit?: string;
+  unitsPerStockUnit?: number;
+  baseUnit?: string;
+};
+
+export type SalesByClientInvoice = {
+  invoiceNumber: string;
+  date: string;
+  warehouse: string;
+  totalQuantity: number;
+  lineCount: number;
+  lines: SalesByClientInvoiceLine[];
+};
+
+export type SalesByClientRow = {
+  clientName: string;
+  totalQuantity: number;
+  invoiceCount: number;
+  invoices?: SalesByClientInvoice[];
+};
+
 export type ReportResult = {
   rows: Record<string, unknown>[];
   groupBy?: string;

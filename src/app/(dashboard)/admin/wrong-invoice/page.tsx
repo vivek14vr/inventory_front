@@ -8,7 +8,7 @@ export default function AdminWrongInvoicePage() {
     <div className="space-y-6 text-zinc-900">
       <PageHeader
         title="Invoices"
-        description="View and correct client names and invoice numbers on all sales and returns."
+        description="View invoice records and correct product quantities on sales lines."
       />
       <WrongInvoicePanel />
     </div>

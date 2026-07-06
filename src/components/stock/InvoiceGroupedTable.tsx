@@ -1,45 +1,41 @@
 "use client";
 
+import { Fragment } from "react";
 import { Button } from "@/components/ui/Button";
-import { formatBaseUnits } from "@/lib/products/productUnits";
+import {
+  formatBaseQuantityWithStockUnit,
+  formatBaseUnits,
+  formatThresholdPreview,
+  thresholdBaseToDisplay,
+  type QuantityEntryMode,
+  usesStockUnit,
+} from "@/lib/products/productUnits";
 import type { InvoiceGroup, InvoiceGroupLine } from "@/types/stock";
 
 type InvoiceGroupedTableProps = {
   groups: InvoiceGroup[];
   canAdjust?: boolean;
-  lastWorkedMovementId: string | null;
-  groupDrafts: Record<string, { invoiceNumber: string; clientName: string }>;
+  quantityMode: QuantityEntryMode;
   lineDrafts: Record<string, { quantity: string }>;
-  savingGroupId: string | null;
   savingLinesGroupId: string | null;
-  flaggingId: string | null;
   deletingId: string | null;
   sortBy: string;
   sortOrder: "asc" | "desc";
   onSort: (field: InvoiceSortField) => void;
-  onGroupDraftChange: (
-    groupId: string,
-    patch: Partial<{ invoiceNumber: string; clientName: string }>
-  ) => void;
   onLineDraftChange: (movementId: string, quantity: string) => void;
-  onSaveGroup: (group: InvoiceGroup) => void;
   onSaveGroupQuantities: (group: InvoiceGroup) => void;
-  onToggleLastWorked: (group: InvoiceGroup) => void;
   onDeleteLine: (group: InvoiceGroup, line: InvoiceGroupLine) => void;
 };
 
 export type InvoiceSortField =
-  | "invoiceLastWorkedAt"
   | "createdAt"
-  | "type"
   | "clientName"
   | "quantity"
-  | "invoiceNumber";
+  | "invoiceNumber"
+  | "modificationCount";
 
-const INVOICE_HEAD =
-  "flex min-h-[2.75rem] items-center border-b border-stone-200 pb-2 mb-1";
-const LINE_ROW =
-  "flex min-h-[2.75rem] items-center border-b border-stone-100 py-1 last:border-b-0";
+const CELL = "border-stone-200 px-4 py-3 align-middle";
+const LINE_CELL = `${CELL} border-t border-stone-100`;
 
 function formatVoucherDate(iso: string): string {
   return new Date(iso)
@@ -62,30 +58,45 @@ function productParticulars(line: InvoiceGroupLine): string {
   return line.productName;
 }
 
+function lineUpdateLabel(modificationCount: number): string {
+  if (modificationCount <= 0) return "Original";
+  if (modificationCount === 1) return "Updated 1×";
+  return `Updated ${modificationCount}×`;
+}
+
+function LineUpdateBadge({ modificationCount }: { modificationCount: number }) {
+  const isOriginal = modificationCount <= 0;
+  return (
+    <span
+      className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${
+        isOriginal
+          ? "bg-stone-100 text-stone-700"
+          : "bg-amber-100 text-amber-900"
+      }`}
+    >
+      {lineUpdateLabel(modificationCount)}
+    </span>
+  );
+}
+
 export function InvoiceGroupedTable({
   groups,
   canAdjust = true,
-  lastWorkedMovementId,
-  groupDrafts,
+  quantityMode,
   lineDrafts,
-  savingGroupId,
   savingLinesGroupId,
-  flaggingId,
   deletingId,
   sortBy,
   sortOrder,
   onSort,
-  onGroupDraftChange,
   onLineDraftChange,
-  onSaveGroup,
   onSaveGroupQuantities,
-  onToggleLastWorked,
   onDeleteLine,
 }: InvoiceGroupedTableProps) {
   return (
     <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] border-collapse text-left text-sm">
+        <table className="w-full min-w-[1160px] border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-stone-300 bg-stone-100 text-xs font-bold uppercase tracking-wide text-stone-700">
               <SortableTh
@@ -94,235 +105,201 @@ export function InvoiceGroupedTable({
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSort={onSort}
+                className="w-[7.5rem] !border-l-0"
               />
-              <th className="border-l border-stone-300 px-4 py-3">Particulars</th>
               <SortableTh
                 label="Client"
                 field="clientName"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSort={onSort}
+                className="w-[11rem]"
               />
               <SortableTh
-                label="Voucher type"
-                field="type"
-                sortBy={sortBy}
-                sortOrder={sortOrder}
-                onSort={onSort}
-              />
-              <SortableTh
-                label="Voucher no."
+                label="Invoice number"
                 field="invoiceNumber"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSort={onSort}
+                className="w-[9rem]"
               />
+              <th className={`${CELL} border-l border-stone-300 min-w-[14rem]`}>Products</th>
               <SortableTh
                 label="Quantity"
                 field="quantity"
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSort={onSort}
+                align="right"
+                className="min-w-[11rem] w-[12rem]"
               />
-              <th className="border-l border-stone-300 px-4 py-3">Actions</th>
+              <SortableTh
+                label="Status"
+                field="modificationCount"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={onSort}
+                className="w-[8.5rem]"
+              />
+              <th
+                className={`${CELL} w-[5.5rem] border-l border-stone-300 text-center`}
+                aria-label="Delete line"
+              />
+              <th className={`${CELL} w-[11rem] border-l border-stone-300 text-right`}>
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody>
             {groups.map((group, groupIndex) => {
-              const groupDraft = groupDrafts[group.id] ?? {
-                invoiceNumber: group.invoiceNumber,
-                clientName: group.clientName,
-              };
-              const isLastWorked = group.lastWorkedMovementId === lastWorkedMovementId;
               const hasEditableLines = group.lines.some(isEditableSaleLine);
+              const lineCount = Math.max(group.lines.length, 1);
+              const groupBg = groupIndex % 2 === 0 ? "bg-white" : "bg-stone-50/40";
 
               return (
-                <tr
-                  key={group.id}
-                  className={`border-t border-stone-200 align-top ${
-                    isLastWorked
-                      ? "bg-indigo-50/70"
-                      : groupIndex % 2 === 0
-                        ? "bg-white"
-                        : "bg-stone-50/30"
-                  }`}
-                >
-                  <td className="border-r border-stone-200 px-4 py-3 align-top text-stone-600">
-                    <div className={INVOICE_HEAD}>
-                      <span className="whitespace-nowrap font-medium">
-                        {formatVoucherDate(group.createdAt)}
-                      </span>
-                    </div>
-                    {group.lines.map((line) => (
-                      <div key={line.movementId} className={LINE_ROW} aria-hidden />
-                    ))}
-                  </td>
-                  <td className="border-r border-stone-200 px-4 py-3 align-top">
-                    <div className={INVOICE_HEAD}>
-                      <span className="text-xs font-semibold uppercase tracking-wide text-stone-400">
-                        Products
-                      </span>
-                    </div>
-                    {group.lines.map((line) => (
-                      <div key={line.movementId} className={`${LINE_ROW} flex-col items-start justify-center`}>
-                        <span className="font-medium text-stone-800">
-                          {productParticulars(line)}
-                        </span>
-                        {line.brandName ? (
-                          <span className="text-xs text-stone-500">{line.brandName}</span>
-                        ) : null}
-                      </div>
-                    ))}
-                  </td>
-                  <td className="border-r border-stone-200 px-4 py-3 align-top">
-                    <div className={INVOICE_HEAD}>
-                      {canAdjust ? (
-                        <input
-                          value={groupDraft.clientName}
-                          onChange={(e) =>
-                            onGroupDraftChange(group.id, { clientName: e.target.value })
-                          }
-                          className="form-input w-full min-w-[140px]"
-                          placeholder="Client name"
-                        />
-                      ) : (
-                        <span className="font-medium text-stone-800">{group.clientName}</span>
-                      )}
-                    </div>
-                    {group.lines.map((line) => (
-                      <div key={line.movementId} className={LINE_ROW} aria-hidden />
-                    ))}
-                  </td>
-                  <td className="border-r border-stone-200 px-4 py-3 align-top text-stone-700">
-                    <div className={`${INVOICE_HEAD} font-medium`}>{group.voucherType}</div>
-                    {group.lines.map((line) => (
-                      <div key={line.movementId} className={LINE_ROW} aria-hidden />
-                    ))}
-                  </td>
-                  <td className="border-r border-stone-200 px-4 py-3 align-top">
-                    <div className={INVOICE_HEAD}>
-                      {canAdjust ? (
-                        <input
-                          value={groupDraft.invoiceNumber}
-                          onChange={(e) =>
-                            onGroupDraftChange(group.id, { invoiceNumber: e.target.value })
-                          }
-                          className="form-input w-full min-w-[120px]"
-                          placeholder="Voucher no."
-                        />
-                      ) : (
-                        <span className="font-medium text-stone-800">{group.invoiceNumber}</span>
-                      )}
-                    </div>
-                    {group.lines.map((line) => (
-                      <div key={line.movementId} className={LINE_ROW} aria-hidden />
-                    ))}
-                  </td>
-                  <td className="border-r border-stone-200 px-4 py-3 align-top">
-                    <div className={INVOICE_HEAD} aria-hidden />
-                    {group.lines.map((line) => {
-                      const lineDraft = lineDrafts[line.movementId] ?? {
-                        quantity: String(line.quantity),
-                      };
+                <Fragment key={group.id}>
+                  {group.lines.map((line, lineIndex) => {
+                    const isFirstLine = lineIndex === 0;
+                    const isLastLine = lineIndex === group.lines.length - 1;
+                    const lineDraft = lineDrafts[line.movementId] ?? {
+                      quantity: thresholdBaseToDisplay(line.quantity, quantityMode, line),
+                    };
+                    const rowBorder = isLastLine ? "border-b-2 border-stone-200" : "";
 
-                      return (
-                        <div key={line.movementId} className={LINE_ROW}>
+                    return (
+                      <tr
+                        key={line.movementId}
+                        className={`${groupBg} ${rowBorder}`}
+                      >
+                        {isFirstLine ? (
+                          <td
+                            rowSpan={lineCount}
+                            className={`${CELL} border-r whitespace-nowrap font-medium text-stone-600`}
+                          >
+                            {formatVoucherDate(group.createdAt)}
+                          </td>
+                        ) : null}
+
+                        {isFirstLine ? (
+                          <>
+                            <td
+                              rowSpan={lineCount}
+                              className={`${CELL} border-l border-r border-stone-200 font-medium text-stone-800`}
+                            >
+                              {group.clientName || "—"}
+                            </td>
+                            <td
+                              rowSpan={lineCount}
+                              className={`${CELL} border-r border-stone-200 font-medium text-stone-800`}
+                            >
+                              {group.invoiceNumber || "—"}
+                            </td>
+                          </>
+                        ) : null}
+
+                        <td className={`${isFirstLine ? CELL : LINE_CELL} min-w-[14rem]`}>
+                          <p className="font-medium leading-snug text-stone-900">
+                            {productParticulars(line)}
+                          </p>
+                          {line.brandName ? (
+                            <p className="mt-0.5 text-xs text-stone-500">{line.brandName}</p>
+                          ) : null}
+                        </td>
+
+                        <td
+                          className={`${isFirstLine ? CELL : LINE_CELL} min-w-[11rem] w-[12rem] text-right tabular-nums`}
+                        >
                           {isEditableSaleLine(line) && canAdjust ? (
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              inputMode="numeric"
-                              value={lineDraft.quantity}
-                              onChange={(e) =>
-                                onLineDraftChange(line.movementId, e.target.value)
-                              }
-                              className="form-input w-full min-w-[88px] tabular-nums"
-                            />
+                            <div className="ml-auto flex w-full max-w-[10.5rem] flex-col items-end gap-1">
+                              <input
+                                type="number"
+                                min={0}
+                                step={quantityMode === "stockUnit" && usesStockUnit(line) ? "any" : 1}
+                                inputMode="decimal"
+                                value={lineDraft.quantity}
+                                onChange={(e) =>
+                                  onLineDraftChange(line.movementId, e.target.value)
+                                }
+                                className="form-input w-full min-w-[7rem] tabular-nums"
+                              />
+                              {formatThresholdPreview(lineDraft.quantity, quantityMode, line) ? (
+                                <span className="max-w-full text-right text-[10px] leading-tight text-stone-500">
+                                  {formatThresholdPreview(lineDraft.quantity, quantityMode, line)}
+                                </span>
+                              ) : null}
+                            </div>
                           ) : (
-                            <span className="font-medium tabular-nums text-stone-900">
-                              {formatBaseUnits(line.quantity, line)}
+                            <span className="font-medium text-stone-900">
+                              {quantityMode === "stockUnit" && usesStockUnit(line)
+                                ? formatBaseQuantityWithStockUnit(line.quantity, line)
+                                : formatBaseUnits(line.quantity, line)}
                             </span>
                           )}
-                        </div>
-                      );
-                    })}
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    {canAdjust ? (
-                      <>
-                    <div className={`${INVOICE_HEAD} flex-wrap justify-end gap-1.5`}>
-                      <button
-                        type="button"
-                        title={
-                          isLastWorked
-                            ? "Click to remove last worked flag"
-                            : "Mark as last worked"
-                        }
-                        disabled={flaggingId !== null}
-                        onClick={() => onToggleLastWorked(group)}
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition ${
-                          isLastWorked
-                            ? "border-indigo-400 bg-indigo-100 text-indigo-700"
-                            : "border-stone-200 bg-white text-stone-400 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
-                        }`}
-                      >
-                        {flaggingId === group.lastWorkedMovementId ? "…" : "★"}
-                      </button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        loading={savingGroupId === group.id}
-                        disabled={savingGroupId !== null && savingGroupId !== group.id}
-                        onClick={() => onSaveGroup(group)}
-                      >
-                        Save invoice
-                      </Button>
-                      {hasEditableLines && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          loading={savingLinesGroupId === group.id}
-                          disabled={
-                            savingLinesGroupId !== null && savingLinesGroupId !== group.id
-                          }
-                          onClick={() => onSaveGroupQuantities(group)}
+                        </td>
+
+                        <td className={`${isFirstLine ? CELL : LINE_CELL} border-l border-stone-200`}>
+                          <LineUpdateBadge
+                            modificationCount={line.invoiceModificationCount ?? 0}
+                          />
+                        </td>
+
+                        <td
+                          className={`${isFirstLine ? CELL : LINE_CELL} border-l border-stone-200 text-center`}
                         >
-                          Save quantities
-                        </Button>
-                      )}
-                    </div>
-                    {group.lines.map((line) => (
-                      <div key={line.movementId} className={`${LINE_ROW} justify-end gap-2`}>
-                        {isEditableSaleLine(line) ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            loading={deletingId === line.movementId}
-                            disabled={
-                              deletingId !== null && deletingId !== line.movementId
-                            }
-                            className="!border-rose-200 !text-rose-800 hover:!bg-rose-50"
-                            onClick={() => onDeleteLine(group, line)}
+                          {isEditableSaleLine(line) && canAdjust ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              loading={deletingId === line.movementId}
+                              disabled={
+                                deletingId !== null && deletingId !== line.movementId
+                              }
+                              className="!min-h-8 !px-2 !py-1 !text-xs !border-rose-200 !text-rose-800 hover:!bg-rose-50"
+                              onClick={() => onDeleteLine(group, line)}
+                            >
+                              Delete
+                            </Button>
+                          ) : null}
+                        </td>
+
+                        {isFirstLine ? (
+                          <td
+                            rowSpan={lineCount}
+                            className={`${CELL} border-l border-stone-200 align-top`}
                           >
-                            Delete
-                          </Button>
+                            {canAdjust && hasEditableLines ? (
+                              <div className="flex h-full min-h-[3rem] flex-col items-end justify-between gap-3 py-0.5">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  loading={savingLinesGroupId === group.id}
+                                  disabled={
+                                    savingLinesGroupId !== null &&
+                                    savingLinesGroupId !== group.id
+                                  }
+                                  onClick={() => onSaveGroupQuantities(group)}
+                                  className="w-full justify-center"
+                                >
+                                  Save quantities
+                                </Button>
+                                {group.warehouse?.code ? (
+                                  <span className="w-full text-center text-[10px] font-bold uppercase tracking-wide text-stone-400">
+                                    {group.warehouse.code}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <span className="block text-right text-xs text-stone-500">
+                                View only
+                              </span>
+                            )}
+                          </td>
                         ) : null}
-                      </div>
-                    ))}
-                    {group.warehouse?.code ? (
-                      <p className="mt-2 text-right text-xs text-stone-500">
-                        {group.warehouse.code}
-                      </p>
-                    ) : null}
-                      </>
-                    ) : (
-                      <p className="text-right text-xs text-stone-500">View only</p>
-                    )}
-                  </td>
-                </tr>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
               );
             })}
           </tbody>
@@ -339,6 +316,7 @@ function SortableTh({
   sortOrder,
   onSort,
   align = "left",
+  className = "",
 }: {
   label: string;
   field: InvoiceSortField;
@@ -346,13 +324,14 @@ function SortableTh({
   sortOrder: "asc" | "desc";
   onSort: (field: InvoiceSortField) => void;
   align?: "left" | "center" | "right";
+  className?: string;
 }) {
   const active = sortBy === field;
   const alignClass =
     align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
 
   return (
-    <th className={`border-l border-stone-300 px-4 py-3 ${alignClass}`}>
+    <th className={`${CELL} border-l border-stone-300 ${alignClass} ${className}`}>
       <button
         type="button"
         onClick={() => onSort(field)}

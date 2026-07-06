@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permission } from "@/lib/auth/permissions";
 import { AUTH_ROUTES } from "@/lib/auth/constants";
 import {
   canViewPendingTransfers,
@@ -33,6 +35,8 @@ const routes = {
 
 export default function AppDashboardPage() {
   const { user, loading: authLoading } = useAuth();
+  const { can } = usePermissions();
+  const canImport = can(Permission.IMPORTS_MANAGE);
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [pendingTransfers, setPendingTransfers] = useState<PendingTransfer[]>([]);
   const [error, setError] = useState("");
@@ -137,13 +141,14 @@ export default function AppDashboardPage() {
         <div className="flex justify-center py-12">
           <LoadingSpinner label="Loading…" />
         </div>
-      ) : !showStock && !showTransfers ? (
+      ) : !showStock && !showTransfers && !canImport ? (
         <EmptyState
           title="Dashboard access only"
           description="You can open other sections from the menu. Stock and transfer stats need stock or transfer permissions."
         />
       ) : (
         <>
+          {(showStock || showTransfers) && (
           <div className="grid gap-4 sm:grid-cols-3">
             {showStock && (
               <>
@@ -164,7 +169,9 @@ export default function AppDashboardPage() {
               />
             )}
           </div>
+          )}
 
+          {(showStock || showTransfers || showReturns) && (
           <section>
             <h2 className="mb-4 text-lg font-bold text-stone-800">What do you want to do?</h2>
             <div className="grid gap-4 grid-cols-2 sm:grid-cols-3">
@@ -223,6 +230,39 @@ export default function AppDashboardPage() {
               )}
             </div>
           </section>
+          )}
+
+          {canImport && (
+            <section>
+              <h2 className="mb-4 text-lg font-bold text-stone-800">Import from Excel</h2>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:max-w-4xl">
+                <QuickActionCard
+                  href={`${AUTH_ROUTES.appImports}?mode=products`}
+                  title="Import products"
+                  description="Upload product catalog spreadsheet"
+                  iconLabel="Imports"
+                  size="large"
+                  color="teal"
+                />
+                <QuickActionCard
+                  href={`${AUTH_ROUTES.appImports}?mode=clients`}
+                  title="Import clients"
+                  description="Upload client list spreadsheet"
+                  iconLabel="Import Clients"
+                  size="large"
+                  color="sky"
+                />
+                <QuickActionCard
+                  href={`${AUTH_ROUTES.appImports}?mode=sales`}
+                  title="Import sales"
+                  description="Direct sell from Tally register"
+                  iconLabel="Import Sales"
+                  size="large"
+                  color="violet"
+                />
+              </div>
+            </section>
+          )}
 
           {showStock && balances.length > 0 && (
             <Panel title="Top stock" description="Highest quantities on hand">

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
+import { StockFlowBackButton } from "@/components/stock/StockFlowBar";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { Pagination } from "@/components/ui/Pagination";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
@@ -10,6 +11,7 @@ import { usePagination } from "@/hooks/usePagination";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { productDisplayName } from "@/lib/products/productDisplayName";
 import { formatBaseQuantityWithStockUnit } from "@/lib/products/productUnits";
+import { validateNonNegativeInteger } from "@/lib/validation/quantity";
 import { api, ApiError } from "@/lib/api/client";
 import type {
   ClientReturnInvoice,
@@ -20,7 +22,7 @@ import type { PaginationMeta } from "@/types/pagination";
 
 type ClientReturnPanelProps = {
   defaultWarehouseId?: string;
-  onBack: () => void;
+  onBack?: () => void;
 };
 
 function formatSaleDate(iso: string): string {
@@ -177,8 +179,9 @@ export function ClientReturnPanel({
   ) {
     const raw = soldQtyDrafts[invoiceId]?.[line.saleMovementId] ?? "";
     const qty = Number.parseInt(raw, 10);
-    if (!Number.isFinite(qty) || qty < 0) {
-      setError("Enter a valid sold quantity (0 or more)");
+    const qtyError = validateNonNegativeInteger(qty);
+    if (!Number.isFinite(qty) || qtyError) {
+      setError(qtyError ?? "Enter a valid sold quantity (0 or more)");
       return;
     }
     if (qty < line.returnedQuantity) {
@@ -230,13 +233,7 @@ export function ClientReturnPanel({
 
   return (
     <div className="space-y-5">
-      <button
-        type="button"
-        onClick={onBack}
-        className="flex min-h-12 items-center gap-2 rounded-2xl border-2 border-stone-200 bg-white px-5 text-base font-bold text-stone-600 transition hover:border-orange-200 hover:bg-orange-50"
-      >
-        ← Back
-      </button>
+      {onBack ? <StockFlowBackButton onClick={onBack} /> : null}
 
       <div className="space-y-4 rounded-2xl border-2 border-stone-200 bg-white p-5">
         <div>

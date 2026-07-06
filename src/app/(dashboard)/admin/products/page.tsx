@@ -106,6 +106,7 @@ export default function AdminProductsPage() {
         api.products.list({
           includeInactive: true,
           includeWarehouseThresholds: true,
+          includeStockTotals: true,
           brandId: filterBrandId || undefined,
           page,
           limit,
@@ -199,6 +200,30 @@ export default function AdminProductsPage() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to update product");
+    }
+  }
+
+  async function handleDelete(item: Product) {
+    if ((item.totalStock ?? 0) > 0) {
+      setError("Stock must be zero at all warehouses before deleting this product");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Delete "${item.name}"? This deactivates the product. It can be reactivated from import or by editing.`
+      )
+    ) {
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+    try {
+      await api.products.delete(item.id);
+      setSuccess(`Deleted ${item.name}`);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to delete product");
     }
   }
 
@@ -506,6 +531,19 @@ export default function AdminProductsPage() {
                       className="text-xs text-zinc-600 hover:text-zinc-900"
                     >
                       {p.isActive ? "Deactivate" : "Activate"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(p)}
+                      disabled={(p.totalStock ?? 0) > 0}
+                      title={
+                        (p.totalStock ?? 0) > 0
+                          ? "Stock must be zero at all warehouses before delete"
+                          : "Delete product"
+                      }
+                      className="text-xs text-red-600 hover:text-red-800 disabled:cursor-not-allowed disabled:text-zinc-300"
+                    >
+                      Delete
                     </button>
                   </td>
                 </tr>
