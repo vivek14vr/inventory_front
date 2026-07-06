@@ -4,14 +4,14 @@ import { useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ClientReturnPanel } from "@/components/stock/ClientReturnPanel";
 import { WarehouseReturnPanel } from "@/components/stock/WarehouseReturnPanel";
+import { WarehouseSelect } from "@/components/stock/WarehouseSelect";
+import { shouldPickWarehouse, resolveWarehouseId } from "@/components/stock/stockFlowUtils";
 import { SelectionGrid } from "@/components/ui/SelectionGrid";
 import { Alert } from "@/components/ui/Alert";
 import {
   CLIENT_RETURN_PERMISSIONS,
-  hasAnyPermission,
+  canWarehouseReturn,
   hasPermission,
-  Permission,
-  WAREHOUSE_RETURN_PERMISSIONS,
 } from "@/lib/auth/permissions";
 
 type ReturnSource = "choose" | "client" | "warehouse";
@@ -23,62 +23,67 @@ type ReturnPanelProps = {
 };
 
 export function ReturnPanel({
+  requireWarehouse = false,
   defaultWarehouseId = "",
   allowedWarehouseIds,
 }: ReturnPanelProps) {
   const { user } = useAuth();
+  const pickWarehouse = shouldPickWarehouse({ requireWarehouse, allowedWarehouseIds });
+  const [warehouseId, setWarehouseId] = useState(defaultWarehouseId);
   const [source, setSource] = useState<ReturnSource>("choose");
-  const [success, setSuccess] = useState("");
+
+  const resolvedWarehouseId = resolveWarehouseId(
+    warehouseId,
+    defaultWarehouseId,
+    allowedWarehouseIds
+  );
 
   const canClientReturn = useMemo(() => {
     if (!user) return false;
+    if (resolvedWarehouseId) {
+      return CLIENT_RETURN_PERMISSIONS.some((code) =>
+        hasPermission(user.role, user.permissions, code, resolvedWarehouseId)
+      );
+    }
     if (allowedWarehouseIds?.length) {
-      return allowedWarehouseIds.some((warehouseId) =>
+      return allowedWarehouseIds.some((id) =>
         CLIENT_RETURN_PERMISSIONS.some((code) =>
-          hasPermission(user.role, user.permissions, code, warehouseId)
+          hasPermission(user.role, user.permissions, code, id)
         )
       );
     }
-    if (defaultWarehouseId) {
-      return CLIENT_RETURN_PERMISSIONS.some((code) =>
-        hasPermission(user.role, user.permissions, code, defaultWarehouseId)
-      );
-    }
-    return hasAnyPermission(user.role, user.permissions, CLIENT_RETURN_PERMISSIONS);
-  }, [user, allowedWarehouseIds, defaultWarehouseId]);
-
-  const canWarehouseReturn = useMemo(() => {
-    if (!user) return false;
-    if (allowedWarehouseIds?.length) {
-      return allowedWarehouseIds.some((warehouseId) =>
-        WAREHOUSE_RETURN_PERMISSIONS.filter(
-          (code) => code !== Permission.TRANSFERS_MANAGE
-        ).some((code) =>
-          hasPermission(user.role, user.permissions, code, warehouseId)
-        ) || hasPermission(user.role, user.permissions, Permission.TRANSFERS_MANAGE)
-      );
-    }
-    if (defaultWarehouseId) {
-      return (
-        WAREHOUSE_RETURN_PERMISSIONS.filter(
-          (code) => code !== Permission.TRANSFERS_MANAGE
-        ).some((code) =>
-          hasPermission(user.role, user.permissions, code, defaultWarehouseId)
-        ) || hasPermission(user.role, user.permissions, Permission.TRANSFERS_MANAGE)
-      );
-    }
-    return hasAnyPermission(
-      user.role,
-      user.permissions,
-      WAREHOUSE_RETURN_PERMISSIONS
+    return CLIENT_RETURN_PERMISSIONS.some((code) =>
+      hasPermission(user.role, user.permissions, code)
     );
-  }, [user, allowedWarehouseIds, defaultWarehouseId]);
+  }, [user, allowedWarehouseIds, resolvedWarehouseId]);
+
+  const canWarehouseReturnAccess = useMemo(
+    () =>
+      canWarehouseReturn(user?.role ?? "", user?.permissions, resolvedWarehouseId || undefined),
+    [user, resolvedWarehouseId]
+  );
 
   function goBack() {
     setSource("choose");
   }
 
-  if (!canClientReturn && !canWarehouseReturn) {
+  if (pickWarehouse && !resolvedWarehouseId) {
+    return (
+      <div className="space-y-5 rounded-2xl border-2 border-stone-200 bg-white p-5">
+        <h2 className="text-lg font-bold text-stone-900">Select warehouse</h2>
+        <p className="text-sm text-stone-600">
+          Choose which warehouse you are processing returns for.
+        </p>
+        <WarehouseSelect
+          value={warehouseId}
+          onChange={setWarehouseId}
+          allowedWarehouseIds={allowedWarehouseIds}
+        />
+      </div>
+    );
+  }
+
+  if (!canClientReturn && !canWarehouseReturnAccess) {
     return (
       <Alert message="You do not have permission to process returns at this warehouse." />
     );
@@ -95,7 +100,7 @@ export function ReturnPanel({
             },
           ]
         : []),
-      ...(canWarehouseReturn
+      ...(canWarehouseReturnAccess
         ? [
             {
               id: "warehouse",
@@ -107,38 +112,31 @@ export function ReturnPanel({
     ];
 
     return (
-      <div className="space-y-5">
-        <Alert message={success} type="success" />
-        <SelectionGrid
-          title="Return from where?"
-          subtitle="Client returns correct sold quantities on an invoice. Warehouse returns send transfer stock back to the source."
-          items={items}
-          onSelect={(id) => {
-            setSuccess("");
-            setSource(id === "client" ? "client" : "warehouse");
-          }}
-        />
-      </div>
+      <SelectionGrid
+        title="Return from where?"
+        subtitle="Client returns correct sold quantities on an invoice. Warehouse returns send transfer stock back to the source."
+        items={items}
+        onSelect={(id) => {
+          setSource(id === "client" ? "client" : "warehouse");
+        }}
+      />
     );
   }
 
   if (source === "client") {
     return (
-      <div className="space-y-5">
-        <Alert message={success} type="success" />
-        <ClientReturnPanel defaultWarehouseId={defaultWarehouseId} onBack={goBack} />
-      </div>
+      <ClientReturnPanel
+        defaultWarehouseId={resolvedWarehouseId}
+        onBack={goBack}
+      />
     );
   }
 
   return (
-    <div className="space-y-5">
-      <Alert message={success} type="success" />
-      <WarehouseReturnPanel
-        defaultWarehouseId={defaultWarehouseId}
-        allowedWarehouseIds={allowedWarehouseIds}
-        onBack={goBack}
-      />
-    </div>
+    <WarehouseReturnPanel
+      defaultWarehouseId={resolvedWarehouseId}
+      allowedWarehouseIds={allowedWarehouseIds}
+      onBack={goBack}
+    />
   );
 }

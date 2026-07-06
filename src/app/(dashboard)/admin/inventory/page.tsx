@@ -639,7 +639,7 @@ function StockView({
                       <td className="sticky right-0 z-10 w-px bg-inherit px-4 py-3.5 align-top">
                         <div className="flex flex-col items-stretch gap-2">
                           <ButtonLink
-                            href={AUTH_ROUTES.adminReturn}
+                            href={`${AUTH_ROUTES.adminReturn}?warehouseId=${encodeURIComponent(detailLinkLocation?.warehouseId ?? "")}`}
                             variant="outline"
                             size="sm"
                             className="!min-h-8 !justify-center !border-emerald-200 !text-emerald-800 hover:!bg-emerald-50"
@@ -833,7 +833,7 @@ function StockView({
                       : "—"}
                   </span>
                   <ButtonLink
-                    href={AUTH_ROUTES.adminReturn}
+                    href={`${AUTH_ROUTES.adminReturn}?warehouseId=${encodeURIComponent(detailLinkLocation?.warehouseId ?? "")}`}
                     variant="outline"
                     size="sm"
                     className="!min-h-8 !border-emerald-200 !text-emerald-800 hover:!bg-emerald-50"

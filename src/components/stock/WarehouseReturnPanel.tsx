@@ -13,6 +13,9 @@ import {
   DataTableTd,
   DataTableTh,
 } from "@/components/ui/DataTable";
+import { Pagination } from "@/components/ui/Pagination";
+import { usePagination } from "@/hooks/usePagination";
+import type { PaginationMeta } from "@/types/pagination";
 import { api, ApiError } from "@/lib/api/client";
 import { productDisplayName } from "@/lib/products/productDisplayName";
 import { formatBaseQuantityWithStockUnit } from "@/lib/products/productUnits";
@@ -70,6 +73,9 @@ export function WarehouseReturnPanel({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [returningId, setReturningId] = useState<string | null>(null);
+  const [receivedPagination, setReceivedPagination] = useState<PaginationMeta | null>(null);
+  const { page: receivedPage, setPage: setReceivedPage, limit: receivedLimit, setLimit: setReceivedLimit } =
+    usePagination(20);
   const [returnNotesById, setReturnNotesById] = useState<Record<string, string>>({});
 
   const scopeTransfers = useCallback(
@@ -97,8 +103,8 @@ export function WarehouseReturnPanel({
       const [receivedResult, inTransitItems] = await Promise.all([
         api.transfers.history({
           status: "RECEIVED",
-          page: 1,
-          limit: 100,
+          page: receivedPage,
+          limit: receivedLimit,
           sortBy: "createdAt",
           sortOrder: "desc",
           ...(defaultWarehouseId
@@ -108,15 +114,17 @@ export function WarehouseReturnPanel({
         api.transfers.pending(defaultWarehouseId || undefined),
       ]);
       setReceivedTransfers(scopeTransfers(receivedResult.items));
+      setReceivedPagination(receivedResult.pagination);
       setInTransitTransfers(scopeTransfers(inTransitItems));
     } catch (err) {
       setReceivedTransfers([]);
+      setReceivedPagination(null);
       setInTransitTransfers([]);
       setError(err instanceof ApiError ? err.message : "Failed to load transfers");
     } finally {
       setLoading(false);
     }
-  }, [defaultWarehouseId, scopeTransfers]);
+  }, [defaultWarehouseId, scopeTransfers, receivedPage, receivedLimit]);
 
   useEffect(() => {
     void loadTransfers();
@@ -170,7 +178,7 @@ export function WarehouseReturnPanel({
     }
   }
 
-  const receivedCount = receivedTransfers.length;
+  const receivedCount = receivedPagination?.total ?? receivedTransfers.length;
   const inTransitCount = inTransitTransfers.length;
 
   return (
@@ -212,6 +220,7 @@ export function WarehouseReturnPanel({
         receivedTransfers.length === 0 ? (
           <EmptyState message="No received transfers available to return." />
         ) : (
+          <div className="space-y-4">
           <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
             <DataTable>
               <DataTableHead>
@@ -288,6 +297,14 @@ export function WarehouseReturnPanel({
                 ))}
               </DataTableBody>
             </DataTable>
+          </div>
+          {receivedPagination && receivedPagination.totalPages > 1 ? (
+            <Pagination
+              pagination={receivedPagination}
+              onPageChange={setReceivedPage}
+              onLimitChange={setReceivedLimit}
+            />
+          ) : null}
           </div>
         )
       ) : inTransitTransfers.length === 0 ? (

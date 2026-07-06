@@ -38,6 +38,16 @@ function AppInventoryPageContent() {
     Permission.STOCK_OUT,
   ]);
   const useCompanyInventory = can(Permission.INVENTORY_VIEW);
+  const canToggleInventoryView = useWarehouseBalances && useCompanyInventory;
+  const [inventoryView, setInventoryView] = useState<"warehouse" | "company">(
+    useWarehouseBalances ? "warehouse" : "company"
+  );
+  const activeCompanyView = canToggleInventoryView
+    ? inventoryView === "company"
+    : useCompanyInventory && !useWarehouseBalances;
+  const activeWarehouseView = canToggleInventoryView
+    ? inventoryView === "warehouse"
+    : useWarehouseBalances;
 
   const searchParams = useSearchParams();
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
@@ -57,7 +67,7 @@ function AppInventoryPageContent() {
     setLoading(true);
     setError("");
     try {
-      if (useWarehouseBalances) {
+      if (activeWarehouseView) {
         const result = await api.stock.balances({
           page,
           limit,
@@ -67,7 +77,7 @@ function AppInventoryPageContent() {
         setBalances(result.items);
         setCompanyProducts([]);
         setPagination(result.pagination);
-      } else if (useCompanyInventory) {
+      } else if (activeCompanyView) {
         const result = await api.inventory.stock({
           page,
           limit,
@@ -94,8 +104,8 @@ function AppInventoryPageContent() {
     limit,
     search,
     warehouseId,
-    useWarehouseBalances,
-    useCompanyInventory,
+    activeWarehouseView,
+    activeCompanyView,
   ]);
 
   useEffect(() => {
@@ -106,14 +116,52 @@ function AppInventoryPageContent() {
     <div className="space-y-6 text-zinc-900">
       <PageHeader
         title="Current stock"
-        description="Warehouse inventory by product and brand"
+        description={
+          activeCompanyView
+            ? "Company-wide stock totals across warehouses"
+            : "Warehouse inventory by product and brand"
+        }
         actions={
-          <button
-            onClick={load}
-            className="rounded-xl border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-          >
-            Refresh
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {canToggleInventoryView ? (
+              <div className="flex rounded-xl border border-zinc-200 p-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInventoryView("warehouse");
+                    resetPage();
+                  }}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                    inventoryView === "warehouse"
+                      ? "bg-zinc-900 text-white"
+                      : "text-zinc-600 hover:bg-zinc-50"
+                  }`}
+                >
+                  My warehouse
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInventoryView("company");
+                    resetPage();
+                  }}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                    inventoryView === "company"
+                      ? "bg-zinc-900 text-white"
+                      : "text-zinc-600 hover:bg-zinc-50"
+                  }`}
+                >
+                  Company-wide
+                </button>
+              </div>
+            ) : null}
+            <button
+              onClick={load}
+              className="rounded-xl border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              Refresh
+            </button>
+          </div>
         }
       />
 
@@ -182,10 +230,12 @@ function AppInventoryPageContent() {
                     />
                   </DataTableTd>
                   <DataTableTd className="text-zinc-500">
-                    {new Date(b.updatedAt).toLocaleString("en-IN", {
-                      dateStyle: "short",
-                      timeStyle: "short",
-                    })}
+                    {b.updatedAt
+                      ? new Date(b.updatedAt).toLocaleString("en-IN", {
+                          dateStyle: "short",
+                          timeStyle: "short",
+                        })
+                      : "—"}
                   </DataTableTd>
                 </DataTableRow>
               ))
@@ -210,17 +260,16 @@ function AppInventoryPageContent() {
                     />
                   </DataTableTd>
                   <DataTableTd className="text-zinc-500">
-                    {new Date(
-                      Math.max(
-                        ...product.locations.map((loc) =>
-                          new Date(loc.updatedAt).getTime()
-                        ),
-                        0
-                      )
-                    ).toLocaleString("en-IN", {
-                      dateStyle: "short",
-                      timeStyle: "short",
-                    })}
+                    {(() => {
+                      const times = product.locations
+                        .map((loc) => new Date(loc.updatedAt).getTime())
+                        .filter((time) => Number.isFinite(time) && time > 0);
+                      if (times.length === 0) return "—";
+                      return new Date(Math.max(...times)).toLocaleString("en-IN", {
+                        dateStyle: "short",
+                        timeStyle: "short",
+                      });
+                    })()}
                   </DataTableTd>
                 </DataTableRow>
               ))

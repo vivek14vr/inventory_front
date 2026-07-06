@@ -133,6 +133,40 @@ export function ProductImportPanel() {
 
   async function handleConfirm() {
     if (!preview) return;
+
+    const validationErrors: string[] = [];
+    for (const row of preview.rows.filter((item) => item.errors.length === 0)) {
+      const state = rowActions[row.rowNumber];
+      const brandAction =
+        state?.brandAction ?? (row.brandCategory === "matched" ? "merge" : "create");
+      const productAction =
+        state?.action ?? (row.category === "matched" ? "merge" : "create");
+      const mergeTargetBrandId =
+        brandAction === "merge"
+          ? state?.mergeTargetBrandId ?? row.matchedBrand?.id
+          : undefined;
+      const mergeTargetProductId =
+        productAction === "merge"
+          ? mergeProductIdForBrand(
+              preview,
+              mergeTargetBrandId,
+              state?.mergeTargetProductId ?? row.matchedProduct?.id
+            )
+          : undefined;
+
+      if (brandAction === "merge" && !mergeTargetBrandId) {
+        validationErrors.push(`Row ${row.rowNumber}: select a brand to merge into`);
+      }
+      if (productAction === "merge" && !mergeTargetProductId) {
+        validationErrors.push(`Row ${row.rowNumber}: select a product to merge into`);
+      }
+    }
+
+    if (validationErrors.length > 0) {
+      setError(validationErrors.join(" · "));
+      return;
+    }
+
     setConfirming(true);
     setError("");
     setSuccess("");
