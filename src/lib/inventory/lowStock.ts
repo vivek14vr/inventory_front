@@ -3,8 +3,8 @@ export function isWarehouseLowStock(row: {
   quantity: number;
   lowStockThreshold?: number | null;
 }): boolean {
-  if (row.lowStockThreshold == null) return false;
-  return row.quantity > 0 && row.quantity <= row.lowStockThreshold;
+  if (row.lowStockThreshold == null || row.lowStockThreshold <= 0) return false;
+  return row.quantity <= row.lowStockThreshold;
 }
 
 export function lowStockSourceLabel(row: {
