@@ -374,6 +374,41 @@ export const api = {
         invoiceNumber?: string;
         clientName: string;
       }>("/stock/out/batch", { method: "POST", body: JSON.stringify(data) }),
+    listClientReturnInvoices: (
+      params?: import("@/types/pagination").PaginationParams & {
+        search?: string;
+        warehouseId?: string;
+      }
+    ) =>
+      apiClientPaginated<import("@/types/stock").ClientReturnInvoiceSummary>(
+        "/stock/client-returns/invoices",
+        params
+      ),
+    getClientReturnInvoice: (params: {
+      invoiceNumber: string;
+      clientName?: string;
+      warehouseId?: string;
+    }) =>
+      apiClient<import("@/types/stock").ClientReturnInvoice>(
+        "/stock/client-returns/invoice",
+        { params }
+      ),
+    submitClientReturn: (data: {
+      mode: import("@/types/stock").ClientReturnMode;
+      invoiceNumber?: string;
+      clientName?: string;
+      warehouseId?: string;
+      saleMovementId?: string;
+      quantity?: number;
+      notes?: string;
+    }) =>
+      apiClient<import("@/types/stock").ClientReturnUpdateQuantityResult>(
+        "/stock/client-returns",
+        {
+          method: "POST",
+          body: JSON.stringify(data),
+        }
+      ),
   },
 
   inventory: {
@@ -382,6 +417,7 @@ export const api = {
       warehouseId?: string;
       brandId?: string;
       productId?: string;
+      includeZero?: boolean;
       search?: string;
       sortBy?: string;
       sortOrder?: "asc" | "desc";
@@ -525,6 +561,11 @@ export const api = {
       }),
     returnGoods: (id: string, data?: { notes?: string }) =>
       apiClient<TransferRecord>(`/transfers/${id}/return`, {
+        method: "POST",
+        body: JSON.stringify(data ?? {}),
+      }),
+    returnInTransit: (id: string, data?: { notes?: string }) =>
+      apiClient<TransferRecord>(`/transfers/${id}/return-in-transit`, {
         method: "POST",
         body: JSON.stringify(data ?? {}),
       }),

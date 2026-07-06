@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { StockFlowBar } from "@/components/stock/StockFlowBar";
+import { StockFlowBar, StockFlowBackButton } from "@/components/stock/StockFlowBar";
 import { resolveWarehouseId, shouldPickWarehouse } from "@/components/stock/stockFlowUtils";
 import { SelectionGrid } from "@/components/ui/SelectionGrid";
 import { SearchInputWithSuggestions } from "@/components/search/SearchInputWithSuggestions";
@@ -279,6 +279,12 @@ export function DirectSellForm({
     }
   }
 
+  const showBackButton =
+    step === "addBrand" ||
+    step === "addProduct" ||
+    step === "addQuantity" ||
+    (step === "cart" && pickWarehouse);
+
   function resetFlow() {
     setSaleLines([]);
     setClientName("");
@@ -361,6 +367,7 @@ export function DirectSellForm({
 
   return (
     <div className="space-y-5">
+      {showBackButton ? <StockFlowBackButton onClick={goBack} /> : null}
       <StockFlowBar steps={flowSteps} />
       <Alert message={error} />
       <Alert message={success} type="success" />
@@ -382,16 +389,6 @@ export function DirectSellForm({
 
       {step === "cart" && (
         <form onSubmit={handleSubmit} className="space-y-5">
-          {pickWarehouse ? (
-            <button
-              type="button"
-              onClick={goBack}
-              className="flex min-h-12 items-center gap-2 rounded-2xl border-2 border-stone-200 bg-white px-5 text-base font-bold text-stone-600 transition hover:border-orange-200 hover:bg-orange-50"
-            >
-              Back
-            </button>
-          ) : null}
-
           <div className="rounded-2xl border-2 border-stone-200 bg-white p-5 sm:p-6">
             <h2 className="text-xl font-bold text-stone-900">Direct sale</h2>
             <p className="mt-1 text-base text-stone-500">
@@ -506,7 +503,6 @@ export function DirectSellForm({
             .filter((b) => b.isActive)
             .map((b) => ({ id: b.id, title: b.name }))}
           onSelect={selectAddBrand}
-          onBack={goBack}
           loading={loadingBrands}
           emptyMessage="No brands found"
         />
@@ -552,7 +548,6 @@ export function DirectSellForm({
                 })
               )}
             onSelect={selectAddProduct}
-            onBack={goBack}
             loading={loadingProducts || loadingProductBalances}
             emptyMessage={
               productSearch.trim()
@@ -565,14 +560,6 @@ export function DirectSellForm({
 
       {step === "addQuantity" && selectedAddProduct && (
         <div className="space-y-5">
-          <button
-            type="button"
-            onClick={goBack}
-            className="flex min-h-12 items-center gap-2 rounded-2xl border-2 border-stone-200 bg-white px-5 text-base font-bold text-stone-600 transition hover:border-orange-200 hover:bg-orange-50"
-          >
-            Back
-          </button>
-
           <div className="rounded-2xl border-2 border-stone-200 bg-white p-5 sm:p-6">
             <h2 className="text-xl font-bold text-stone-900">Quantity</h2>
             <p className="mt-1 text-base text-stone-500">

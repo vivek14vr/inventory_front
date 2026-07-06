@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { StockFlowBar } from "@/components/stock/StockFlowBar";
+import { StockFlowBar, StockFlowBackButton } from "@/components/stock/StockFlowBar";
 import { resolveWarehouseId, shouldPickWarehouse } from "@/components/stock/stockFlowUtils";
 import { SelectionGrid } from "@/components/ui/SelectionGrid";
 import { SearchInputWithSuggestions } from "@/components/search/SearchInputWithSuggestions";
@@ -182,6 +182,24 @@ export function StockInForm({
     }
   }
 
+  function handleBack() {
+    if (step === "confirm") {
+      if (!transfer) goBack();
+      return;
+    }
+    if (step === "product" || (step === "brand" && pickWarehouse)) {
+      goBack();
+      return;
+    }
+    onBack?.();
+  }
+
+  const showBackButton =
+    (step === "confirm" && !transfer) ||
+    step === "product" ||
+    step === "brand" ||
+    (step === "warehouse" && !!onBack);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -250,21 +268,8 @@ export function StockInForm({
 
   return (
     <div className="space-y-5">
-      {onBack && step !== "confirm" && (
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex min-h-12 items-center gap-2 rounded-2xl border-2 border-stone-200 bg-white px-5 text-base font-bold text-stone-600 transition hover:border-orange-200 hover:bg-orange-50"
-        >
-          <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5" aria-hidden>
-            <path
-              fillRule="evenodd"
-              d="M11.78 4.22a.75.75 0 010 1.06L7.56 9.5h8.19a.75.75 0 010 1.5H7.56l4.22 4.22a.75.75 0 11-1.06 1.06l-5.5-5.5a.75.75 0 010-1.06l5.5-5.5a.75.75 0 011.06 0z"
-              clipRule="evenodd"
-            />
-          </svg>
-          Back
-        </button>
+      {showBackButton && (
+        <StockFlowBackButton onClick={handleBack} disabled={!!transfer && step === "confirm"} />
       )}
       <StockFlowBar steps={flowSteps} />
       <Alert message={error} />
@@ -311,7 +316,6 @@ export function StockInForm({
             .filter((b) => b.isActive)
             .map((b) => ({ id: b.id, title: b.name }))}
           onSelect={selectBrand}
-          onBack={pickWarehouse ? goBack : undefined}
           loading={loadingBrands}
           emptyMessage="No brands found. Add brands first."
         />
@@ -351,7 +355,6 @@ export function StockInForm({
               })
             )}
             onSelect={selectProduct}
-            onBack={goBack}
             loading={loadingProducts || loadingProductBalances}
             emptyMessage={
               productSearch.trim()
@@ -364,22 +367,6 @@ export function StockInForm({
 
       {step === "confirm" && (
         <form onSubmit={handleSubmit} className="space-y-5">
-          <button
-            type="button"
-            onClick={goBack}
-            disabled={!!transfer}
-            className="flex min-h-12 items-center gap-2 rounded-2xl border-2 border-stone-200 bg-white px-5 text-base font-bold text-stone-600 transition hover:border-orange-200 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5" aria-hidden>
-              <path
-                fillRule="evenodd"
-                d="M11.78 4.22a.75.75 0 010 1.06L7.56 9.5h8.19a.75.75 0 010 1.5H7.56l4.22 4.22a.75.75 0 11-1.06 1.06l-5.5-5.5a.75.75 0 010-1.06l5.5-5.5a.75.75 0 011.06 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-            Back
-          </button>
-
           <div className="rounded-2xl border-2 border-stone-200 bg-white p-5 sm:p-6">
             <h2 className="text-xl font-bold text-stone-900">
               {returnMode ? "Return details" : "Enter quantity"}

@@ -50,6 +50,7 @@ export type PendingTransfer = {
   brand: { id: string; name: string };
   sourceWarehouse: { id: string; name: string; code: string };
   destinationWarehouse?: { id: string; name: string; code: string };
+  createdBy?: { id: string; name: string };
   createdAt: string;
 };
 
@@ -99,4 +100,51 @@ export type InvoiceGroup = {
   warehouse?: { id: string; name: string; code: string };
   lastWorkedMovementId?: string;
   lines: InvoiceGroupLine[];
+};
+
+export type ClientReturnInvoiceLine = {
+  saleMovementId: string;
+  productId: string;
+  productName: string;
+  secondaryProductName?: string;
+  brandId: string;
+  brandName: string;
+  stockUnit?: string;
+  unitsPerStockUnit?: number;
+  baseUnit?: string;
+  soldQuantity: number;
+  returnedQuantity: number;
+  returnableQuantity: number;
+};
+
+export type ClientReturnInvoice = {
+  invoiceNumber: string;
+  clientName: string;
+  warehouse: { id: string; name: string; code: string };
+  saleDate: string;
+  lines: ClientReturnInvoiceLine[];
+};
+
+export type ClientReturnInvoiceSummary = {
+  id: string;
+  invoiceNumber: string;
+  clientName: string;
+  warehouse: { id: string; name: string; code: string };
+  saleDate: string;
+  lineCount: number;
+  totalReturnableQuantity: number;
+};
+
+export type ClientReturnMode = "full" | "line" | "update_quantity";
+
+export type ClientReturnUpdateQuantityResult = {
+  mode: "update_quantity";
+  updatedMovementId: string;
+  quantity: number;
+  previousQuantity: number;
+  inventoryDelta: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  warehouseId: string;
+  productId: string;
 };

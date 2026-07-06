@@ -139,6 +139,7 @@ function AdminInventoryPageContent() {
         limit,
         sortBy,
         sortOrder,
+        includeZero: true,
         ...(search.trim() ? { search: search.trim() } : {}),
         ...(warehouseId ? { warehouseId } : {}),
         ...(brandId ? { brandId } : {}),
