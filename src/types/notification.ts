@@ -24,3 +24,9 @@ export type NotificationSyncResult = {
   created: number;
   notifications: AppNotification[];
 };
+
+export type NotificationPollResult = {
+  sync: NotificationSyncResult;
+  items: AppNotification[];
+  unreadCount: number;
+};

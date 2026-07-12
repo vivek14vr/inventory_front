@@ -15,7 +15,7 @@ import { useToast } from "@/contexts/ToastContext";
 import type { AppNotification } from "@/types/notification";
 
 const SHOWN_KEY = "inventory_toast_shown_ids";
-const POLL_MS = 30_000;
+const POLL_MS = 60_000;
 
 type NotificationContextValue = {
   notifications: AppNotification[];
@@ -84,14 +84,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (!canUse) return;
     setLoading(true);
     try {
-      const [syncResult, listResult, countResult] = await Promise.all([
-        api.notifications.sync(),
-        api.notifications.list({ resolved: false, limit: 50 }),
-        api.notifications.unreadCount(),
-      ]);
+      const poll = await api.notifications.poll();
 
-      const toToast = [...syncResult.notifications];
-      for (const n of listResult.items) {
+      const toToast = [...poll.sync.notifications];
+      for (const n of poll.items) {
         if (
           !n.read &&
           !n.resolved &&
@@ -101,8 +97,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         }
       }
       showNewToasts(toToast);
-      setNotifications(listResult.items);
-      setUnreadCount(countResult.count);
+      setNotifications(poll.items);
+      setUnreadCount(poll.unreadCount);
     } catch {
       // silent — notifications are non-critical
     } finally {

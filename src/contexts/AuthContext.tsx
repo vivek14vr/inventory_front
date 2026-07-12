@@ -126,8 +126,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return;
     }
+    if (user && getAccessTokenIfValid()) {
+      setLoading(false);
+      return;
+    }
     refreshUser().finally(() => setLoading(false));
-  }, [pathname, refreshUser]);
+  }, [pathname, refreshUser, user]);
 
   const login = useCallback(async (email: string, password: string) => {
     loginInProgressRef.current = true;

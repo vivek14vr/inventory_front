@@ -881,6 +881,10 @@ export const api = {
   },
 
   notifications: {
+    poll: () =>
+      apiClient<import("@/types/notification").NotificationPollResult>(
+        "/notifications/poll"
+      ),
     list: (params?: { resolved?: boolean; page?: number; limit?: number }) =>
       apiClientPaginated<import("@/types/notification").AppNotification>(
         "/notifications",
