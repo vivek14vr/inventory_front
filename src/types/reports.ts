@@ -32,6 +32,7 @@ export type SalesByClientInvoice = {
   invoiceNumber: string;
   date: string;
   warehouse: string;
+  clientName?: string;
   totalQuantity: number;
   lineCount: number;
   lines: SalesByClientInvoiceLine[];
@@ -42,6 +43,15 @@ export type SalesByClientRow = {
   totalQuantity: number;
   invoiceCount: number;
   invoices?: SalesByClientInvoice[];
+};
+
+export type SalesByBrandProduct = {
+  product: string;
+  quantity: number;
+  saleCount: number;
+  stockUnit?: string;
+  unitsPerStockUnit?: number;
+  baseUnit?: string;
 };
 
 export type ReportResult = {

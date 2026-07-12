@@ -12,10 +12,10 @@ import {
   usesStockUnit,
 } from "@/lib/products/productUnits";
 import type { Brand, Product, Warehouse } from "@/types/master";
-import type { ReportFilters, ReportResult, ReportType, SalesByClientInvoice } from "@/types/reports";
+import type { ReportFilters, ReportResult, ReportType, SalesByBrandProduct, SalesByClientInvoice } from "@/types/reports";
 
 const META_COLUMNS = new Set(["stockUnit", "unitsPerStockUnit", "baseUnit"]);
-const HIDDEN_COLUMNS = new Set([...META_COLUMNS, "invoices"]);
+const HIDDEN_COLUMNS = new Set([...META_COLUMNS, "invoices", "lines", "products"]);
 const QUANTITY_COLUMNS = new Set(["quantity", "totalUnits", "totalQuantity"]);
 
 const REPORT_OPTIONS: { value: ReportType; label: string }[] = [
@@ -42,16 +42,15 @@ const COLUMN_MAP: Record<ReportType, string[]> = {
     "clientName",
     "invoiceNumber",
   ],
-  transfers: ["date", "status", "product", "brand", "quantity", "from", "to"],
+  transfers: ["date", "from", "to", "product", "brand", "status", "quantity", "receivedAt"],
   "sales-client": ["clientName", "totalQuantity", "invoiceCount"],
   "sales-invoice": [
     "date",
     "invoiceNumber",
     "clientName",
     "warehouse",
-    "product",
-    "brand",
-    "quantity",
+    "totalQuantity",
+    "lineCount",
   ],
   "sales-brand": ["brand", "totalQuantity", "saleCount"],
 };
@@ -139,6 +138,8 @@ export default function AdminReportsPage() {
   const [error, setError] = useState("");
   const [quantityMode, setQuantityMode] = useState<QuantityEntryMode>("stockUnit");
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
+  const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
+  const [expandedBrands, setExpandedBrands] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     Promise.all([api.warehouses.list(true), api.brands.list()]).then(([w, b]) => {
@@ -157,6 +158,8 @@ export default function AdminReportsPage() {
 
   useEffect(() => {
     setExpandedClients(new Set());
+    setExpandedInvoices(new Set());
+    setExpandedBrands(new Set());
   }, [reportType, filters]);
 
   const runReport = useCallback(async () => {
@@ -196,6 +199,10 @@ export default function AdminReportsPage() {
   const showQuantityToggle = reportHasStockUnitRows(result, columns);
   const quantityToggleProduct = findToggleProduct(result, columns);
   const isSalesByClient = reportType === "sales-client";
+  const isSalesByInvoice = reportType === "sales-invoice";
+  const isSalesByBrand = reportType === "sales-brand";
+  const expandableReport =
+    isSalesByClient || isSalesByInvoice || isSalesByBrand;
 
   function toggleClientExpanded(clientName: string) {
     setExpandedClients((prev) => {
@@ -204,6 +211,30 @@ export default function AdminReportsPage() {
         next.delete(clientName);
       } else {
         next.add(clientName);
+      }
+      return next;
+    });
+  }
+
+  function toggleInvoiceExpanded(invoiceKey: string) {
+    setExpandedInvoices((prev) => {
+      const next = new Set(prev);
+      if (next.has(invoiceKey)) {
+        next.delete(invoiceKey);
+      } else {
+        next.add(invoiceKey);
+      }
+      return next;
+    });
+  }
+
+  function toggleBrandExpanded(brandName: string) {
+    setExpandedBrands((prev) => {
+      const next = new Set(prev);
+      if (next.has(brandName)) {
+        next.delete(brandName);
+      } else {
+        next.add(brandName);
       }
       return next;
     });
@@ -397,6 +428,12 @@ export default function AdminReportsPage() {
                 {isSalesByClient && (result?.rows.length ?? 0) > 0 ? (
                   <span className="text-stone-400">· click a client to view invoices</span>
                 ) : null}
+                {isSalesByInvoice && (result?.rows.length ?? 0) > 0 ? (
+                  <span className="text-stone-400">· one row per invoice · click to view products</span>
+                ) : null}
+                {isSalesByBrand && (result?.rows.length ?? 0) > 0 ? (
+                  <span className="text-stone-400">· click a brand to view products</span>
+                ) : null}
               </>
             )}
           </p>
@@ -404,7 +441,7 @@ export default function AdminReportsPage() {
             <table className="w-full text-left text-sm">
               <thead className="sticky top-0 z-10 bg-orange-50 text-xs font-bold uppercase tracking-wide text-orange-800 shadow-[inset_0_-1px_0_rgba(0,0,0,0.08)]">
                 <tr>
-                  {isSalesByClient ? (
+                  {expandableReport ? (
                     <th className="w-10 px-3 py-3.5" aria-hidden />
                   ) : null}
                   {columns.map((col) => (
@@ -435,7 +472,7 @@ export default function AdminReportsPage() {
                 {!result || result.rows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={columns.length + (isSalesByClient ? 1 : 0)}
+                      colSpan={columns.length + (expandableReport ? 1 : 0)}
                       className="px-5 py-10 text-center text-base font-medium text-stone-400"
                     >
                       No data for selected filters
@@ -486,6 +523,113 @@ export default function AdminReportsPage() {
                             <td colSpan={columns.length + 1} className="px-5 py-4">
                               <SalesByClientInvoiceDetails
                                 invoices={invoices}
+                                quantityMode={quantityMode}
+                              />
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })
+                ) : isSalesByInvoice ? (
+                  result.rows.map((row, i) => {
+                    const invoiceKey = salesInvoiceRowKey(row);
+                    const invoiceDetails = rowToSalesInvoice(row);
+                    const isExpanded = expandedInvoices.has(invoiceKey);
+                    const canExpand = (invoiceDetails?.lines.length ?? 0) > 0;
+
+                    return (
+                      <Fragment key={`${invoiceKey}-${i}`}>
+                        <tr
+                          className={`border-t border-stone-100 transition-colors odd:bg-white even:bg-stone-50/50 ${
+                            canExpand
+                              ? "cursor-pointer hover:bg-orange-50/60"
+                              : "hover:bg-orange-50/60"
+                          } ${isExpanded ? "bg-orange-50/40" : ""}`}
+                          onClick={
+                            canExpand ? () => toggleInvoiceExpanded(invoiceKey) : undefined
+                          }
+                          aria-expanded={canExpand ? isExpanded : undefined}
+                        >
+                          <td className="px-3 py-3 text-center text-stone-400">
+                            {canExpand ? (
+                              <span
+                                className="inline-block text-xs transition-transform"
+                                aria-hidden
+                              >
+                                {isExpanded ? "▼" : "▶"}
+                              </span>
+                            ) : null}
+                          </td>
+                          {columns.map((col, colIndex) =>
+                            renderReportCell({
+                              col,
+                              colIndex,
+                              row,
+                              numericCols,
+                              quantityMode,
+                            })
+                          )}
+                        </tr>
+                        {isExpanded && invoiceDetails ? (
+                          <tr className="border-t border-orange-100 bg-orange-50/30">
+                            <td colSpan={columns.length + 1} className="px-5 py-4">
+                              <SalesByClientInvoiceDetails
+                                invoices={[invoiceDetails]}
+                                quantityMode={quantityMode}
+                              />
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })
+                ) : isSalesByBrand ? (
+                  result.rows.map((row, i) => {
+                    const brandName = String(row.brand ?? "");
+                    const products = parseBrandProducts(row.products);
+                    const isExpanded = expandedBrands.has(brandName);
+                    const canExpand = products.length > 0;
+
+                    return (
+                      <Fragment key={`${brandName}-${i}`}>
+                        <tr
+                          className={`border-t border-stone-100 transition-colors odd:bg-white even:bg-stone-50/50 ${
+                            canExpand
+                              ? "cursor-pointer hover:bg-orange-50/60"
+                              : "hover:bg-orange-50/60"
+                          } ${isExpanded ? "bg-orange-50/40" : ""}`}
+                          onClick={
+                            canExpand ? () => toggleBrandExpanded(brandName) : undefined
+                          }
+                          aria-expanded={canExpand ? isExpanded : undefined}
+                        >
+                          <td className="px-3 py-3 text-center text-stone-400">
+                            {canExpand ? (
+                              <span
+                                className="inline-block text-xs transition-transform"
+                                aria-hidden
+                              >
+                                {isExpanded ? "▼" : "▶"}
+                              </span>
+                            ) : null}
+                          </td>
+                          {columns.map((col, colIndex) =>
+                            renderReportCell({
+                              col,
+                              colIndex,
+                              row,
+                              numericCols,
+                              quantityMode,
+                            })
+                          )}
+                        </tr>
+                        {isExpanded && products.length > 0 ? (
+                          <tr className="border-t border-orange-100 bg-orange-50/30">
+                            <td colSpan={columns.length + 1} className="px-5 py-4">
+                              <SalesByBrandProductDetails
+                                brandName={brandName}
+                                products={products}
                                 quantityMode={quantityMode}
                               />
                             </td>
@@ -545,6 +689,7 @@ function getColumns(type: ReportType, result: ReportResult | null): string[] {
 }
 
 function formatHeader(key: string): string {
+  if (key === "lineCount") return "Products";
   return key
     .replace(/([A-Z])/g, " $1")
     .replace(/^./, (s) => s.toUpperCase())
@@ -615,6 +760,53 @@ function parseClientInvoices(value: unknown): SalesByClientInvoice[] {
   );
 }
 
+function salesInvoiceRowKey(row: Record<string, unknown>): string {
+  return [
+    String(row.invoiceNumber ?? ""),
+    String(row.clientName ?? ""),
+    String(row.warehouse ?? ""),
+  ].join("\0");
+}
+
+function parseInvoiceLines(value: unknown): SalesByClientInvoice["lines"] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is SalesByClientInvoice["lines"][number] =>
+      typeof item === "object" &&
+      item != null &&
+      typeof (item as { product?: unknown }).product === "string" &&
+      typeof (item as { brand?: unknown }).brand === "string" &&
+      typeof (item as { quantity?: unknown }).quantity === "number"
+  );
+}
+
+function rowToSalesInvoice(row: Record<string, unknown>): SalesByClientInvoice | null {
+  const lines = parseInvoiceLines(row.lines);
+  const invoiceNumber = String(row.invoiceNumber ?? "");
+  if (!invoiceNumber && lines.length === 0) return null;
+
+  return {
+    invoiceNumber,
+    date: String(row.date ?? ""),
+    warehouse: String(row.warehouse ?? ""),
+    clientName: String(row.clientName ?? ""),
+    totalQuantity: Number(row.totalQuantity ?? lines.reduce((sum, line) => sum + line.quantity, 0)),
+    lineCount: Number(row.lineCount ?? lines.length),
+    lines,
+  };
+}
+
+function parseBrandProducts(value: unknown): SalesByBrandProduct[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is SalesByBrandProduct =>
+      typeof item === "object" &&
+      item != null &&
+      typeof (item as SalesByBrandProduct).product === "string" &&
+      typeof (item as SalesByBrandProduct).quantity === "number"
+  );
+}
+
 function renderReportCell({
   col,
   colIndex,
@@ -667,6 +859,57 @@ function renderReportCell({
   );
 }
 
+function SalesByBrandProductDetails({
+  brandName,
+  products,
+  quantityMode,
+}: {
+  brandName: string;
+  products: SalesByBrandProduct[];
+  quantityMode: QuantityEntryMode;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+      <div className="border-b border-stone-100 bg-stone-50/80 px-4 py-2.5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">
+          Products ({products.length})
+        </p>
+        <p className="text-sm font-semibold text-stone-900">{brandName}</p>
+      </div>
+      <table className="w-full text-left text-sm">
+        <thead className="bg-white text-[10px] font-bold uppercase tracking-wide text-stone-400">
+          <tr>
+            <th className="px-4 py-2 text-left">Product</th>
+            <th className="px-4 py-2 text-right">Quantity</th>
+            <th className="px-4 py-2 text-right">Sales</th>
+          </tr>
+        </thead>
+        <tbody>
+          {products.map((product, index) => (
+            <tr
+              key={`${product.product}-${index}`}
+              className="border-t border-stone-100"
+            >
+              <td className="px-4 py-2 font-medium text-stone-800">{product.product}</td>
+              <td className="px-4 py-2 text-right">
+                <ReportQuantityValue
+                  quantity={product.quantity}
+                  product={product}
+                  quantityMode={quantityMode}
+                  align="right"
+                />
+              </td>
+              <td className="px-4 py-2 text-right font-bold tabular-nums text-stone-900">
+                {product.saleCount.toLocaleString()}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function SalesByClientInvoiceDetails({
   invoices,
   quantityMode,
@@ -691,6 +934,7 @@ function SalesByClientInvoiceDetails({
               </p>
               <p className="text-xs text-stone-500">
                 {formatCell(invoice.date)} · {invoice.warehouse}
+                {invoice.clientName ? ` · ${invoice.clientName}` : ""}
               </p>
             </div>
             <div className="text-right">
