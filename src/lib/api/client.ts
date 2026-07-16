@@ -127,9 +127,7 @@ export async function apiClient<T>(
     );
   }
 
-  const authToken = skipAuth
-    ? undefined
-    : (token ?? getAccessTokenIfValid() ?? undefined);
+  const authToken = skipAuth ? undefined : await resolveAuthToken(token);
 
   let response: Response;
   try {
@@ -150,8 +148,6 @@ export async function apiClient<T>(
     );
   }
 
-  const body = await parseJsonResponse<T>(response);
-
   if (
     response.status === 401 &&
     !skipAuth &&
@@ -168,6 +164,8 @@ export async function apiClient<T>(
       });
     }
   }
+
+  const body = await parseJsonResponse<T>(response);
 
   if (!response.ok || !body.success) {
     throw new ApiError(
@@ -212,12 +210,16 @@ export const api = {
         token: data.token ?? data.accessToken,
       };
     },
-    refresh: () =>
-      apiClient<LoginResponse>("/auth/refresh", {
+    refresh: () => {
+      const refreshToken = getRefreshToken();
+      return apiClient<LoginResponse>("/auth/refresh", {
         method: "POST",
-        body: "{}",
+        body: refreshToken
+          ? JSON.stringify({ refreshToken })
+          : "{}",
         skipAuth: true,
-      }),
+      });
+    },
     me: (token?: string) => apiClient<AuthUser>("/auth/me", { token }),
     logout: () => {
       const refreshToken = getRefreshToken();

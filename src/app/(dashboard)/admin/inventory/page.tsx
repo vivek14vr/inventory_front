@@ -44,7 +44,6 @@ import { SearchInputWithSuggestions } from "@/components/search/SearchInputWithS
 import { createAdminInventoryProductSuggestions } from "@/lib/search/productSearchSuggestions";
 import {
   validateNonNegativeInteger,
-  validatePositiveInteger,
 } from "@/lib/validation/quantity";
 import {
   printCurrentStockReport,

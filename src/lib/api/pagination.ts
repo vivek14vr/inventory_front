@@ -2,8 +2,7 @@ import { ApiError, type ApiResponse } from "@/lib/api/client";
 import type { PaginatedResult, PaginationMeta, PaginationParams } from "@/types/pagination";
 
 import { buildApiUrl } from "@/lib/api/base";
-import { getAccessToken } from "@/lib/auth/token";
-import { refreshAccessToken } from "@/lib/api/authSession";
+import { getValidAccessToken, refreshAccessToken } from "@/lib/api/authSession";
 
 export type PaginatedQueryParams = PaginationParams &
   Record<string, string | number | boolean | undefined>;
@@ -28,18 +27,14 @@ function toQueryParams(params?: PaginatedQueryParams) {
   return q;
 }
 
-export async function apiClientPaginated<T>(
-  path: string,
-  params?: PaginatedQueryParams
-): Promise<PaginatedResult<T>> {
-  const url = buildApiUrl(path);
-  const query = toQueryParams(params);
-  Object.entries(query).forEach(([k, v]) => url.searchParams.set(k, v));
-
-  let token = getAccessToken();
+async function fetchWithTokenRetry(
+  url: string,
+  initialToken: string | null
+): Promise<Response> {
+  let token = initialToken;
   let response: Response;
   try {
-    response = await fetch(url.toString(), {
+    response = await fetch(url, {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
@@ -58,7 +53,7 @@ export async function apiClientPaginated<T>(
     token = await refreshAccessToken();
     if (token) {
       try {
-        response = await fetch(url.toString(), {
+        response = await fetch(url, {
           credentials: "include",
           headers: {
             "Content-Type": "application/json",
@@ -74,6 +69,20 @@ export async function apiClientPaginated<T>(
       }
     }
   }
+
+  return response;
+}
+
+export async function apiClientPaginated<T>(
+  path: string,
+  params?: PaginatedQueryParams
+): Promise<PaginatedResult<T>> {
+  const url = buildApiUrl(path);
+  const query = toQueryParams(params);
+  Object.entries(query).forEach(([k, v]) => url.searchParams.set(k, v));
+
+  const token = await getValidAccessToken();
+  const response = await fetchWithTokenRetry(url.toString(), token);
 
   let body: ApiResponse<T[] | { items: T[] }>;
   try {
@@ -110,44 +119,8 @@ export async function apiClientPaginatedData<TItem, TData extends { items: TItem
   const query = toQueryParams(params);
   Object.entries(query).forEach(([k, v]) => url.searchParams.set(k, v));
 
-  let token = getAccessToken();
-  let response: Response;
-  try {
-    response = await fetch(url.toString(), {
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-    });
-  } catch {
-    throw new ApiError(
-      "Cannot reach server. Start the backend (port 4000) or run `npm run dev` from the project root.",
-      0,
-      "NETWORK_ERROR"
-    );
-  }
-
-  if (response.status === 401) {
-    token = await refreshAccessToken();
-    if (token) {
-      try {
-        response = await fetch(url.toString(), {
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        });
-      } catch {
-        throw new ApiError(
-          "Cannot reach server. Start the backend (port 4000) or run `npm run dev` from the project root.",
-          0,
-          "NETWORK_ERROR"
-        );
-      }
-    }
-  }
+  const token = await getValidAccessToken();
+  const response = await fetchWithTokenRetry(url.toString(), token);
 
   let body: ApiResponse<TData>;
   try {

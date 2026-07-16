@@ -16,6 +16,7 @@ import {
   clearAuthTokens,
   getAccessTokenIfValid,
   getDashboardPath,
+  getRefreshToken,
   hydrateAuthStorageFromCookie,
   msUntilAccessTokenRefresh,
   setAuthTokens,
@@ -29,7 +30,7 @@ type AuthContextValue = {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<AuthUser | null>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -49,8 +50,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const loginInProgressRef = useRef(false);
 
-  const refreshUser = useCallback(async () => {
-    if (loginInProgressRef.current) return;
+  const refreshUser = useCallback(async (): Promise<AuthUser | null> => {
+    if (loginInProgressRef.current) return null;
 
     hydrateAuthStorageFromCookie();
 
@@ -60,14 +61,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     if (!token) {
       setUser(null);
-      return;
+      return null;
     }
 
     try {
       const me = await api.auth.me(token);
       setUser(me);
       syncAccessTokenCookie();
-      return;
+      return me;
     } catch (err) {
       if (err instanceof ApiError && err.statusCode === 401) {
         const refreshed = await refreshAccessToken();
@@ -76,19 +77,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const me = await api.auth.me(refreshed);
             setUser(me);
             syncAccessTokenCookie();
-            return;
+            return me;
           } catch {
             /* fall through to logout */
           }
         }
         clearAuthTokens();
         setUser(null);
-        return;
+        return null;
       }
       if (err instanceof ApiError && err.statusCode === 0) {
-        return;
+        return null;
       }
     }
+    return null;
   }, []);
 
   useEffect(() => {
@@ -122,16 +124,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   useEffect(() => {
+    let cancelled = false;
+
     if (pathname === AUTH_ROUTES.login) {
-      setLoading(false);
-      return;
+      if (!getRefreshToken() && !getAccessToken()) {
+        setLoading(false);
+        return;
+      }
+      void refreshUser()
+        .then((me) => {
+          if (cancelled || !me) return;
+          const redirect = safeRedirectPath();
+          const dest =
+            redirect ?? getDashboardPath(me.role, me.permissions);
+          window.location.replace(dest);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
     }
+
     if (user && getAccessTokenIfValid()) {
       setLoading(false);
       return;
     }
-    refreshUser().finally(() => setLoading(false));
-  }, [pathname, refreshUser, user]);
+
+    void refreshUser().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap on route change only
+  }, [pathname, refreshUser]);
 
   const login = useCallback(async (email: string, password: string) => {
     loginInProgressRef.current = true;

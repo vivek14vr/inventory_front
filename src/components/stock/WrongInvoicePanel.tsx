@@ -57,7 +57,9 @@ export function WrongInvoicePanel() {
   const [sortBy, setSortBy] = useState<InvoiceSortField>("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const quantityModeRef = useRef<QuantityEntryMode>(quantityMode);
-  quantityModeRef.current = quantityMode;
+  useEffect(() => {
+    quantityModeRef.current = quantityMode;
+  }, [quantityMode]);
 
   const { page, setPage, limit, setLimit, resetPage } = usePagination(20);
 

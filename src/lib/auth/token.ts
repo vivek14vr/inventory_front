@@ -152,7 +152,11 @@ export function clearAuthTokens(): void {
   } catch {
     /* ignore */
   }
-  document.cookie = `${ACCESS_TOKEN_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
+  const secure =
+    typeof window !== "undefined" && window.location.protocol === "https:"
+      ? "; Secure"
+      : "";
+  document.cookie = `${ACCESS_TOKEN_COOKIE}=; path=/; max-age=0; SameSite=Lax${secure}`;
 }
 
 export function getAccessToken(): string | null {
