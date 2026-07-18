@@ -620,7 +620,7 @@ export const api = {
           updatedLineCount?: number;
           summary: string;
         }>;
-      }>(`/inventory/movements/${movementId}/updates`),
+      }>(`/inventory/invoice-updates/${movementId}`),
     deleteInvoice: (movementId: string) =>
       apiClient<{ deleted: boolean; id: string }>(
         `/inventory/movements/${movementId}/invoice`,
