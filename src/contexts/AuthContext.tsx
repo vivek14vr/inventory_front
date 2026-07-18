@@ -201,7 +201,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthTokens({
         accessToken,
         accessTokenExpiresIn: result.accessTokenExpiresIn,
-        refreshToken: result.refreshToken,
         refreshTokenExpiresIn: result.refreshTokenExpiresIn,
       });
       setUser(result.user);

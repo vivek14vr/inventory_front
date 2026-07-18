@@ -12,8 +12,7 @@ import type { AuthUser } from "@/types/auth";
 export type TokenRefreshResponse = {
   accessToken: string;
   accessTokenExpiresIn: number;
-  refreshToken: string;
-  refreshTokenExpiresIn: number;
+  refreshTokenExpiresIn?: number;
   token: string;
   user: AuthUser;
 };
@@ -48,7 +47,6 @@ async function performRefresh(): Promise<RefreshSessionResult | null> {
     setAuthTokens({
       accessToken: body.data.accessToken,
       accessTokenExpiresIn: body.data.accessTokenExpiresIn,
-      refreshToken: body.data.refreshToken,
       refreshTokenExpiresIn: body.data.refreshTokenExpiresIn,
     });
     syncAccessTokenCookie();

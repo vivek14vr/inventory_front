@@ -16,8 +16,9 @@ export type AuthUser = {
 export type LoginResponse = {
   accessToken: string;
   accessTokenExpiresIn: number;
-  refreshToken: string;
-  refreshTokenExpiresIn: number;
+  /** @deprecated Refresh is httpOnly cookie only — may be absent. */
+  refreshToken?: string;
+  refreshTokenExpiresIn?: number;
   user: AuthUser;
   /** @deprecated Use accessToken */
   token: string;
