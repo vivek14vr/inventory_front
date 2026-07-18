@@ -33,7 +33,6 @@ const navGroups = [
       { href: AUTH_ROUTES.adminClients, label: "Clients" },
       { href: AUTH_ROUTES.adminUsers, label: "Users" },
       { href: AUTH_ROUTES.adminChecklists, label: "Daily Checklists" },
-      { href: AUTH_ROUTES.adminNotifications, label: "Notifications" },
       { href: AUTH_ROUTES.adminAudit, label: "Activity Log" },
     ],
   },

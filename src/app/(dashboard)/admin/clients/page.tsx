@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { formatSecondaryName } from "@/lib/products/productNames";
 import type { Client } from "@/types/master";
@@ -82,27 +83,24 @@ export default function AdminClientsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-zinc-900">Clients</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Maintain a master list of clients with a primary name and optional secondary name.
-        </p>
-      </div>
-
-      <div className="flex justify-end">
-        <button
-          onClick={() => {
-            if (showForm) {
-              resetForm();
-            } else {
-              setShowForm(true);
-            }
-          }}
-          className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800"
-        >
-          {showForm ? "Cancel" : "Add client"}
-        </button>
-      </div>
+      <PageHeader
+        title="Clients"
+        description="Maintain a master list of clients with a primary name and optional secondary name."
+        actions={
+          <button
+            onClick={() => {
+              if (showForm) {
+                resetForm();
+              } else {
+                setShowForm(true);
+              }
+            }}
+            className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800"
+          >
+            {showForm ? "Cancel" : "Add client"}
+          </button>
+        }
+      />
 
       <Alert message={error} />
       <Alert message={success} type="success" />

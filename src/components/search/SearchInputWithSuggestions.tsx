@@ -36,7 +36,7 @@ export function SearchInputWithSuggestions({
   fetchSuggestions,
   placeholder = "Search…",
   ariaLabel = "Search",
-  inputClassName = "form-input w-full !pl-11",
+  inputClassName = "form-input w-full",
   wrapperClassName = "",
   debounceMs = 300,
   showViewAll = false,
@@ -47,6 +47,8 @@ export function SearchInputWithSuggestions({
 }: SearchInputWithSuggestionsProps) {
   const listboxId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
+  // form-input uses px-4; force enough left padding for the leading icon.
+  const resolvedInputClassName = `${inputClassName} !pl-12`;
 
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
@@ -151,7 +153,7 @@ export function SearchInputWithSuggestions({
         {ariaLabel}
       </label>
       <div className="relative">
-        <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-stone-400">
+        <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-stone-400">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden>
             <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
           </svg>
@@ -180,7 +182,7 @@ export function SearchInputWithSuggestions({
               ? `${listboxId}-option-${activeIndex}`
               : undefined
           }
-          className={inputClassName}
+          className={resolvedInputClassName}
         />
         {loading && (
           <span className="absolute inset-y-0 right-4 flex items-center" aria-hidden>

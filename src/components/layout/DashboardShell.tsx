@@ -5,6 +5,9 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { BrandLogo } from "@/components/auth/BrandLogo";
 import { ChecklistNotificationBell } from "@/components/notifications/ChecklistNotificationBell";
+import {
+  DashboardChromeProvider,
+} from "@/components/layout/DashboardChromeContext";
 import { NavIcon } from "@/components/layout/NavIcon";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -92,15 +95,6 @@ export function DashboardShell({
             {subtitle ?? "SV Enterprises"}
           </p>
         </div>
-        {notificationsHref && (
-          <div className={`shrink-0 [&_button]:border-white/30 [&_button]:bg-white/10 [&_button]:text-white [&_button]:hover:border-white [&_button]:hover:bg-white/20 ${textClass}`}>
-            <ChecklistNotificationBell
-              notificationsHref={notificationsHref}
-              checklistsHref={checklistsHref}
-              align="left"
-            />
-          </div>
-        )}
       </div>
 
       <nav className="flex-1 space-y-2 overflow-y-auto px-3 py-4">
@@ -178,6 +172,9 @@ export function DashboardShell({
   );
 
   return (
+    <DashboardChromeProvider
+      value={{ notificationsHref, checklistsHref }}
+    >
     <div className="min-h-screen bg-[var(--background)] text-stone-900">
       {mobileOpen && (
         <button
@@ -271,5 +268,6 @@ export function DashboardShell({
         </nav>
       </div>
     </div>
+    </DashboardChromeProvider>
   );
 }

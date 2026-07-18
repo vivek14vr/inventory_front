@@ -345,7 +345,7 @@ export function StockInForm({
             fetchSuggestions={fetchProductSuggestions}
             placeholder="Search primary or secondary name…"
             ariaLabel="Search products"
-            inputClassName="form-input w-full"
+            inputClassName="form-input w-full !pl-11"
             emptyMessage={(term) => `No products match “${term}”`}
           />
           <SelectionGrid

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { Warehouse } from "@/types/master";
 
@@ -166,18 +167,18 @@ function MasterPage({
 }) {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-zinc-900">{title}</h1>
-        <p className="mt-1 text-sm text-zinc-500">{description}</p>
-      </div>
-      <div className="flex justify-end">
-        <button
-          onClick={showForm ? onCancel : onAdd}
-          className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800"
-        >
-          {showForm ? "Cancel" : `Add ${title.slice(0, -1).toLowerCase() || "item"}`}
-        </button>
-      </div>
+      <PageHeader
+        title={title}
+        description={description}
+        actions={
+          <button
+            onClick={showForm ? onCancel : onAdd}
+            className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800"
+          >
+            {showForm ? "Cancel" : `Add ${title.slice(0, -1).toLowerCase() || "item"}`}
+          </button>
+        }
+      />
       <Alert message={error} />
       <Alert message={success} type="success" />
       {showForm && (

@@ -1,3 +1,5 @@
+export type ChecklistFrequency = "daily" | "weekly" | "monthly";
+
 export type ChecklistTask = {
   id: string;
   title: string;
@@ -15,6 +17,10 @@ export type Checklist = {
   description?: string;
   assignedUserIds: string[];
   tasks: ChecklistTask[];
+  frequency: ChecklistFrequency;
+  weekdays?: number[];
+  dayOfMonth?: number;
+  scheduleLabel?: string;
   createdBy: string;
   isActive: boolean;
   createdAt: string;

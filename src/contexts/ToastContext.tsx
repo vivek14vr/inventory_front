@@ -18,31 +18,60 @@ export type ToastItem = {
   message: string;
   variant: ToastVariant;
   durationMs?: number;
+  /** True while exit animation plays before removal. */
+  exiting?: boolean;
 };
 
 type ToastContextValue = {
   toasts: ToastItem[];
-  pushToast: (toast: Omit<ToastItem, "id">) => void;
+  pushToast: (toast: Omit<ToastItem, "id" | "exiting">) => void;
   dismissToast: (id: string) => void;
 };
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
+const EXIT_MS = 260;
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const exitTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  const dismissToast = useCallback((id: string) => {
+  const clearTimer = useCallback((id: string) => {
     const timer = timers.current.get(id);
     if (timer) {
       clearTimeout(timer);
       timers.current.delete(id);
     }
-    setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  const removeToast = useCallback((id: string) => {
+    clearTimer(id);
+    const exitTimer = exitTimers.current.get(id);
+    if (exitTimer) {
+      clearTimeout(exitTimer);
+      exitTimers.current.delete(id);
+    }
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, [clearTimer]);
+
+  const dismissToast = useCallback(
+    (id: string) => {
+      clearTimer(id);
+      if (exitTimers.current.has(id)) return;
+
+      setToasts((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, exiting: true } : t))
+      );
+
+      const exitTimer = setTimeout(() => removeToast(id), EXIT_MS);
+      exitTimers.current.set(id, exitTimer);
+    },
+    [clearTimer, removeToast]
+  );
+
   const pushToast = useCallback(
-    (toast: Omit<ToastItem, "id">) => {
+    (toast: Omit<ToastItem, "id" | "exiting">) => {
       const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const item: ToastItem = { ...toast, id };
       setToasts((prev) => [...prev.slice(-4), item]);
@@ -55,10 +84,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
-    const map = timers.current;
+    const auto = timers.current;
+    const exits = exitTimers.current;
     return () => {
-      map.forEach((timer) => clearTimeout(timer));
-      map.clear();
+      auto.forEach((timer) => clearTimeout(timer));
+      auto.clear();
+      exits.forEach((timer) => clearTimeout(timer));
+      exits.clear();
     };
   }, []);
 

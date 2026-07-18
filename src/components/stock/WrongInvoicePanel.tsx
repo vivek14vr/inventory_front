@@ -297,9 +297,9 @@ export function WrongInvoicePanel() {
       >
         <h2 className="text-xl font-bold text-stone-900">All invoice records</h2>
         <p className="mt-1 text-base text-stone-500">
-          Sales and returns are grouped by voucher number. Edit product quantities only; client
-          name and voucher number are read-only. Each product line shows how many times its
-          quantity has been updated.
+          Latest sale quantities by voucher number. Edit product quantities only; client name
+          and voucher number are read-only. Each product line shows how many times its quantity
+          has been updated.
         </p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
           <div className="flex-1">

@@ -5,6 +5,7 @@ import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
 import { useNotifications } from "@/contexts/NotificationContext";
 import type { TodayChecklist } from "@/types/checklist";
@@ -68,30 +69,35 @@ export function ChecklistsTodayContent({ notificationsHref }: ChecklistsTodayCon
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-stone-900 sm:text-3xl">Today&apos;s checklist</h1>
-          <p className="mt-2 text-base text-stone-500">{today}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <ButtonLink
-            href={notificationsHref}
-            variant="secondary"
-            size="lg"
-            className="relative"
-          >
-            Notification history
-            {unreadCount > 0 && (
-              <span className="ml-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-600 px-1.5 text-xs font-bold text-white">
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
-            )}
-          </ButtonLink>
-          <Button variant="secondary" size="lg" onClick={() => void load()} loading={loading}>
-            Refresh
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Today's checklist"
+        description={today}
+        actions={
+          <>
+            <ButtonLink
+              href={notificationsHref}
+              variant="secondary"
+              size="lg"
+              className="relative"
+            >
+              Notification history
+              {unreadCount > 0 && (
+                <span className="ml-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-600 px-1.5 text-xs font-bold text-white">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
+            </ButtonLink>
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => void load()}
+              loading={loading}
+            >
+              Refresh
+            </Button>
+          </>
+        }
+      />
 
       <Alert message={error} />
 

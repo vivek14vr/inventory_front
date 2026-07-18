@@ -13,9 +13,10 @@ import { api } from "@/lib/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import type { AppNotification } from "@/types/notification";
+import { notificationDisplayTitle } from "@/lib/notifications/notificationDisplayTitle";
 
 const SHOWN_KEY = "inventory_toast_shown_ids";
-const POLL_MS = 60_000;
+const POLL_MS = 15_000;
 
 type NotificationContextValue = {
   notifications: AppNotification[];
@@ -49,6 +50,7 @@ function saveShownIds(ids: Set<string>) {
 }
 
 function toastVariant(n: AppNotification): "info" | "warning" | "success" {
+  if (n.type === "ADMIN_REMINDER") return "warning";
   if (n.reminderKey.startsWith("after_") || n.isPastDue) return "warning";
   if (n.reminderKey === "pending") return "info";
   return "info";
@@ -69,7 +71,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         if (n.resolved || shownIds.current.has(n.id)) continue;
         shownIds.current.add(n.id);
         pushToast({
-          title: n.title,
+          title: notificationDisplayTitle(n),
           message: n.message,
           variant: toastVariant(n),
           durationMs: 5000,

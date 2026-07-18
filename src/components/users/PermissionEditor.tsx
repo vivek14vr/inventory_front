@@ -86,7 +86,16 @@ export function PermissionEditor({
       .filter((mod) => mod.permissions.length > 0);
   }, [modulesProp, fetchedModules]);
 
-  // Open the first module that already has grants (or stock by default).
+  const mainModules = useMemo(
+    () => modules.filter((m) => (m.navGroup ?? "main") === "main"),
+    [modules]
+  );
+  const moreModules = useMemo(
+    () => modules.filter((m) => m.navGroup === "more"),
+    [modules]
+  );
+
+  // Open the first module that already has grants (or first main module).
   useEffect(() => {
     if (initializedOpen || modules.length === 0) return;
     const withGrants = modules.find((mod) => {
@@ -192,6 +201,174 @@ export function PermissionEditor({
     return null;
   }
 
+  function renderModuleCard(mod: PermissionModuleDefinition) {
+    const selected = grantsForModule(mod).length;
+    const isOpen = openModuleId === mod.id;
+    const warehousePerms = mod.permissions.filter((p) =>
+      isPermWarehouseScoped(mod, p)
+    );
+    const companyPerms = mod.permissions.filter(
+      (p) => !isPermWarehouseScoped(mod, p)
+    );
+
+    return (
+      <div
+        key={mod.id}
+        className={`overflow-hidden rounded-2xl border-2 bg-white transition ${
+          selected > 0
+            ? "border-orange-300 shadow-sm shadow-orange-900/5"
+            : "border-stone-200"
+        }`}
+      >
+        <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <button
+            type="button"
+            className="min-w-0 flex-1 text-left"
+            onClick={() =>
+              setOpenModuleId((id) => (id === mod.id ? null : mod.id))
+            }
+            aria-expanded={isOpen}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-lg text-stone-400" aria-hidden>
+                {isOpen ? "▾" : "▸"}
+              </span>
+              <h4 className="text-xl font-bold text-stone-900">{mod.label}</h4>
+              {selected > 0 ? (
+                <span className="rounded-full bg-orange-600 px-3 py-1 text-xs font-bold text-white">
+                  {selected} allowed
+                </span>
+              ) : (
+                <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-bold text-stone-500">
+                  No access
+                </span>
+              )}
+            </div>
+            {!isOpen && (
+              <p className="mt-1.5 line-clamp-1 text-sm text-stone-500 sm:pl-7">
+                {mod.description}
+              </p>
+            )}
+          </button>
+
+          {isOpen && (
+            <div className="flex flex-wrap gap-2 sm:shrink-0">
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                disabled={disabled}
+                onClick={() => selectAllInModule(mod)}
+              >
+                Allow all
+              </Button>
+              <Button
+                type="button"
+                size="lg"
+                variant="secondary"
+                disabled={disabled || selected === 0}
+                onClick={() => clearModule(mod)}
+              >
+                Clear module
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {isOpen && (
+          <div className="space-y-6 border-t border-stone-100 p-4 sm:p-5">
+            <p className="text-sm text-stone-500">{mod.description}</p>
+
+            {warehousePerms.length > 0 && (
+              <div className="space-y-4">
+                <div className="rounded-xl bg-amber-50 px-4 py-3">
+                  <p className="text-sm font-bold text-amber-950">
+                    At a warehouse
+                  </p>
+                  <p className="mt-0.5 text-sm text-amber-900/80">
+                    Tap a warehouse to allow that action there. Leave warehouses
+                    white if they should not have access.
+                  </p>
+                </div>
+
+                {warehousePerms.map((perm) => (
+                  <div
+                    key={perm.code}
+                    className="rounded-2xl border-2 border-stone-100 bg-stone-50/60 p-4"
+                  >
+                    <p className="text-base font-bold text-stone-900">
+                      {perm.label}
+                    </p>
+                    {perm.description && (
+                      <p className="mt-1 text-sm text-stone-500">
+                        {perm.description}
+                      </p>
+                    )}
+                    <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+                      {warehouses.map((w) => {
+                        const active = isChecked(perm.code, w.id);
+                        return (
+                          <button
+                            key={`${perm.code}-${w.id}`}
+                            type="button"
+                            disabled={disabled}
+                            aria-pressed={active}
+                            onClick={() => toggle(perm.code, w.id)}
+                            className={`flex min-h-14 flex-col items-start justify-center rounded-2xl border-2 px-5 py-3 text-left transition active:scale-[0.98] disabled:opacity-50 ${
+                              active
+                                ? "border-orange-600 bg-orange-600 text-white shadow-md shadow-orange-900/20"
+                                : "border-stone-200 bg-white text-stone-700 hover:border-orange-300 hover:bg-orange-50"
+                            }`}
+                          >
+                            <span className="text-base font-bold leading-tight">
+                              {w.name}
+                            </span>
+                            <span
+                              className={`text-xs font-semibold ${
+                                active ? "text-orange-100" : "text-stone-400"
+                              }`}
+                            >
+                              {active ? "Allowed" : "Not allowed"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {companyPerms.length > 0 && (
+              <div className="space-y-3">
+                <div className="rounded-xl bg-stone-100 px-4 py-3">
+                  <p className="text-sm font-bold text-stone-900">
+                    Whole company
+                  </p>
+                  <p className="mt-0.5 text-sm text-stone-600">
+                    These apply everywhere — no warehouse pick needed. Usually
+                    for admins or senior staff only.
+                  </p>
+                </div>
+
+                {companyPerms.map((perm) => (
+                  <ToggleActionButton
+                    key={perm.code}
+                    active={isChecked(perm.code)}
+                    disabled={disabled}
+                    label={perm.label}
+                    description={perm.description}
+                    onToggle={() => toggle(perm.code)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <Alert message={catalogError} />
@@ -206,12 +383,12 @@ export function PermissionEditor({
             disabled={disabled || !warehouses.length}
             onClick={() => applyPreset("warehouse-operator")}
             title="Warehouse staff"
-            hint="Home, stock, returns, receive transfers"
+            hint="Home, Stock In/Out, Check Stock, Return, Transfer receive"
           />
           <PresetTile
             disabled={disabled || !warehouses.length}
             onClick={() => applyPreset("stock-only")}
-            title="Stock in / out only"
+            title="Stock In / Out only"
             hint="Minimal counter access"
           />
           <PresetTile
@@ -252,186 +429,33 @@ export function PermissionEditor({
         </section>
       )}
 
-      <section className="space-y-3">
+      <section className="space-y-6">
         <div>
           <h3 className="text-lg font-bold text-stone-900">Modules</h3>
           <p className="mt-1 text-sm text-stone-500">
-            Tap a module to open it. Orange warehouse buttons mean “allowed at
-            that location.” Company-wide actions do not need a warehouse.
+            Same order as the sidebar. Tap a module to open it. Orange warehouse
+            buttons mean “allowed at that location.” Company-wide actions do not
+            need a warehouse.
           </p>
         </div>
 
-        {modules.map((mod) => {
-          const selected = grantsForModule(mod).length;
-          const isOpen = openModuleId === mod.id;
-          const warehousePerms = mod.permissions.filter((p) =>
-            isPermWarehouseScoped(mod, p)
-          );
-          const companyPerms = mod.permissions.filter(
-            (p) => !isPermWarehouseScoped(mod, p)
-          );
+        {mainModules.length > 0 && (
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wide text-stone-400">
+              Main menu
+            </h4>
+            {mainModules.map(renderModuleCard)}
+          </div>
+        )}
 
-          return (
-            <div
-              key={mod.id}
-              className={`overflow-hidden rounded-2xl border-2 bg-white transition ${
-                selected > 0
-                  ? "border-orange-300 shadow-sm shadow-orange-900/5"
-                  : "border-stone-200"
-              }`}
-            >
-              <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-                <button
-                  type="button"
-                  className="min-w-0 flex-1 text-left"
-                  onClick={() =>
-                    setOpenModuleId((id) => (id === mod.id ? null : mod.id))
-                  }
-                  aria-expanded={isOpen}
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-lg text-stone-400" aria-hidden>
-                      {isOpen ? "▾" : "▸"}
-                    </span>
-                    <h4 className="text-xl font-bold text-stone-900">
-                      {mod.label}
-                    </h4>
-                    {selected > 0 ? (
-                      <span className="rounded-full bg-orange-600 px-3 py-1 text-xs font-bold text-white">
-                        {selected} allowed
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-bold text-stone-500">
-                        No access
-                      </span>
-                    )}
-                  </div>
-                  {!isOpen && (
-                    <p className="mt-1.5 line-clamp-1 text-sm text-stone-500 sm:pl-7">
-                      {mod.description}
-                    </p>
-                  )}
-                </button>
-
-                {isOpen && (
-                  <div className="flex flex-wrap gap-2 sm:shrink-0">
-                    <Button
-                      type="button"
-                      size="lg"
-                      variant="outline"
-                      disabled={disabled}
-                      onClick={() => selectAllInModule(mod)}
-                    >
-                      Allow all
-                    </Button>
-                    <Button
-                      type="button"
-                      size="lg"
-                      variant="secondary"
-                      disabled={disabled || selected === 0}
-                      onClick={() => clearModule(mod)}
-                    >
-                      Clear module
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              {isOpen && (
-                <div className="space-y-6 border-t border-stone-100 p-4 sm:p-5">
-                  <p className="text-sm text-stone-500">{mod.description}</p>
-
-                  {warehousePerms.length > 0 && (
-                    <div className="space-y-4">
-                      <div className="rounded-xl bg-amber-50 px-4 py-3">
-                        <p className="text-sm font-bold text-amber-950">
-                          At a warehouse
-                        </p>
-                        <p className="mt-0.5 text-sm text-amber-900/80">
-                          Tap a warehouse to allow that action there. Leave
-                          warehouses white if they should not have access.
-                        </p>
-                      </div>
-
-                      {warehousePerms.map((perm) => (
-                        <div
-                          key={perm.code}
-                          className="rounded-2xl border-2 border-stone-100 bg-stone-50/60 p-4"
-                        >
-                          <p className="text-base font-bold text-stone-900">
-                            {perm.label}
-                          </p>
-                          {perm.description && (
-                            <p className="mt-1 text-sm text-stone-500">
-                              {perm.description}
-                            </p>
-                          )}
-                          <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
-                            {warehouses.map((w) => {
-                              const active = isChecked(perm.code, w.id);
-                              return (
-                                <button
-                                  key={`${perm.code}-${w.id}`}
-                                  type="button"
-                                  disabled={disabled}
-                                  aria-pressed={active}
-                                  onClick={() => toggle(perm.code, w.id)}
-                                  className={`flex min-h-14 flex-col items-start justify-center rounded-2xl border-2 px-5 py-3 text-left transition active:scale-[0.98] disabled:opacity-50 ${
-                                    active
-                                      ? "border-orange-600 bg-orange-600 text-white shadow-md shadow-orange-900/20"
-                                      : "border-stone-200 bg-white text-stone-700 hover:border-orange-300 hover:bg-orange-50"
-                                  }`}
-                                >
-                                  <span className="text-base font-bold leading-tight">
-                                    {w.name}
-                                  </span>
-                                  <span
-                                    className={`text-xs font-semibold ${
-                                      active
-                                        ? "text-orange-100"
-                                        : "text-stone-400"
-                                    }`}
-                                  >
-                                    {active ? "Allowed" : "Not allowed"}
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {companyPerms.length > 0 && (
-                    <div className="space-y-3">
-                      <div className="rounded-xl bg-stone-100 px-4 py-3">
-                        <p className="text-sm font-bold text-stone-900">
-                          Whole company
-                        </p>
-                        <p className="mt-0.5 text-sm text-stone-600">
-                          These apply everywhere — no warehouse pick needed.
-                          Usually for admins or senior staff only.
-                        </p>
-                      </div>
-
-                      {companyPerms.map((perm) => (
-                        <ToggleActionButton
-                          key={perm.code}
-                          active={isChecked(perm.code)}
-                          disabled={disabled}
-                          label={perm.label}
-                          description={perm.description}
-                          onToggle={() => toggle(perm.code)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {moreModules.length > 0 && (
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wide text-stone-400">
+              More
+            </h4>
+            {moreModules.map(renderModuleCard)}
+          </div>
+        )}
       </section>
     </div>
   );

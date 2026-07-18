@@ -28,19 +28,26 @@ export function ToastViewport() {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`pointer-events-auto overflow-hidden rounded-2xl border-2 shadow-xl shadow-stone-900/10 ${variantStyles[toast.variant]}`}
+          className={`pointer-events-auto overflow-hidden rounded-2xl border-2 shadow-xl shadow-stone-900/10 ${
+            toast.exiting ? "toast-exit" : "toast-enter"
+          } ${variantStyles[toast.variant]}`}
           role="status"
         >
           <div className="flex gap-3 p-4">
-            <div className={`mt-1 h-10 w-1 shrink-0 rounded-full ${accentStyles[toast.variant]}`} />
+            <div
+              className={`mt-1 h-10 w-1 shrink-0 rounded-full ${accentStyles[toast.variant]}`}
+            />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-bold">{toast.title}</p>
-              <p className="mt-1 text-sm leading-snug opacity-90">{toast.message}</p>
+              <p className="mt-1 text-sm leading-snug opacity-90">
+                {toast.message}
+              </p>
             </div>
             <button
               type="button"
               onClick={() => dismissToast(toast.id)}
-              className="shrink-0 rounded-lg px-2 py-1 text-lg leading-none text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+              disabled={toast.exiting}
+              className="shrink-0 rounded-lg px-2 py-1 text-lg leading-none text-stone-400 hover:bg-stone-100 hover:text-stone-700 disabled:opacity-40"
               aria-label="Dismiss"
             >
               ×

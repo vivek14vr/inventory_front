@@ -6,6 +6,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { SelectMenu } from "@/components/ui/SelectMenu";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Pagination } from "@/components/ui/Pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { printAuditLogReport } from "@/lib/reports/auditLogPdf";
@@ -137,23 +138,21 @@ export function AuditPageContent() {
 
   return (
     <div className="space-y-6 text-zinc-900">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-zinc-900">Audit log</h1>
-          <p className="mt-1 text-sm text-zinc-600">
-            User activity and system changes — filter by user, action, or date
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="secondary"
-          loading={downloading}
-          disabled={loading}
-          onClick={() => void downloadPdf()}
-        >
-          Download PDF
-        </Button>
-      </div>
+      <PageHeader
+        title="Audit log"
+        description="User activity and system changes — filter by user, action, or date"
+        actions={
+          <Button
+            type="button"
+            variant="secondary"
+            loading={downloading}
+            disabled={loading}
+            onClick={() => void downloadPdf()}
+          >
+            Download PDF
+          </Button>
+        }
+      />
 
       {summary && (
         <div className="grid gap-4 sm:grid-cols-3">

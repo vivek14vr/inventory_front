@@ -36,11 +36,15 @@ export type PermissionGrant = {
   warehouseId?: string;
 };
 
+export type PermissionNavGroup = "main" | "more";
+
 export type PermissionModuleDefinition = {
   id: string;
   label: string;
   description: string;
   warehouseScoped: boolean;
+  /** Matches sidebar: Main menu vs More. */
+  navGroup?: PermissionNavGroup;
   permissions: Array<{
     code: PermissionCode;
     label: string;

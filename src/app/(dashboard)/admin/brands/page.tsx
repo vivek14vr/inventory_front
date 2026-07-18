@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { Brand } from "@/types/master";
 
@@ -68,25 +69,22 @@ export default function AdminBrandsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-zinc-900">Brands</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Brand selection is mandatory during stock transactions.
-        </p>
-      </div>
-
-      <div className="flex justify-end">
-        <button
-          onClick={() => {
-            setShowForm(!showForm);
-            setName("");
-            setEditId(null);
-          }}
-          className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800"
-        >
-          {showForm ? "Cancel" : "Add brand"}
-        </button>
-      </div>
+      <PageHeader
+        title="Brands"
+        description="Brand selection is mandatory during stock transactions."
+        actions={
+          <button
+            onClick={() => {
+              setShowForm(!showForm);
+              setName("");
+              setEditId(null);
+            }}
+            className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800"
+          >
+            {showForm ? "Cancel" : "Add brand"}
+          </button>
+        }
+      />
 
       <Alert message={error} />
       <Alert message={success} type="success" />

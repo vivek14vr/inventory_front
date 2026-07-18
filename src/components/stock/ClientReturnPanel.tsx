@@ -6,19 +6,23 @@ import { Button } from "@/components/ui/Button";
 import { StockFlowBackButton } from "@/components/stock/StockFlowBar";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { Pagination } from "@/components/ui/Pagination";
-import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import { ThresholdUnitToggle } from "@/components/products/ThresholdUnitToggle";
 import { usePagination } from "@/hooks/usePagination";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { productDisplayName } from "@/lib/products/productDisplayName";
 import {
   formatBaseQuantityWithStockUnit,
+  formatBaseUnits,
   formatQuantityEntryPreview,
+  getBaseUnitLabel,
+  getStockUnitLabel,
+  pluralizeStockUnit,
   quantityEntryLabel,
   thresholdBaseToDisplay,
   thresholdDisplayToBase,
   usesStockUnit,
   type QuantityEntryMode,
+  type ProductUnitFields,
 } from "@/lib/products/productUnits";
 import { validatePositiveInteger } from "@/lib/validation/quantity";
 import { api, ApiError } from "@/lib/api/client";
@@ -40,6 +44,28 @@ function lineUnitFields(line: ClientReturnInvoiceLine) {
     unitsPerStockUnit: line.unitsPerStockUnit,
     baseUnit: line.baseUnit,
   };
+}
+
+function formatQuantityForMode(
+  baseQty: number,
+  mode: QuantityEntryMode,
+  units: Partial<ProductUnitFields>
+): string {
+  if (mode === "stockUnit" && usesStockUnit(units)) {
+    return formatBaseQuantityWithStockUnit(baseQty, units);
+  }
+  return formatBaseUnits(baseQty, units);
+}
+
+function quantityModeUnitName(
+  mode: QuantityEntryMode,
+  units: Partial<ProductUnitFields>,
+  count = 2
+): string {
+  if (mode === "units" && usesStockUnit(units)) {
+    return pluralizeStockUnit(getBaseUnitLabel(units), count);
+  }
+  return pluralizeStockUnit(getStockUnitLabel(units), count);
 }
 
 function formatSaleDate(iso: string): string {
@@ -248,7 +274,7 @@ export function ClientReturnPanel({
         quantityMode,
         units
       );
-      const unitLabel = quantityEntryLabel(quantityMode, units);
+      const unitLabel = quantityModeUnitName(quantityMode, units);
       setError(
         `Cannot return more than ${maxDisplay} ${unitLabel} remaining on this line`
       );
@@ -307,21 +333,6 @@ export function ClientReturnPanel({
             className="form-input mt-1"
             placeholder="Invoice number, client, or product…"
           />
-        </div>
-
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex min-w-[12rem] flex-col gap-1">
-            <span className="text-xs font-medium text-stone-500">Return quantities in</span>
-            <ThresholdUnitToggle
-              mode={quantityMode}
-              onModeChange={handleQuantityModeChange}
-              product={quantityToggleProduct}
-              size="sm"
-              alwaysShow
-              fallbackStockUnitLabel="Cartons"
-              fallbackBaseUnitLabel="Pieces"
-            />
-          </div>
         </div>
       </div>
 
@@ -416,7 +427,22 @@ export function ClientReturnPanel({
                               <tr className="border-b border-stone-200 bg-stone-50 text-xs font-bold uppercase text-stone-600">
                                 <th className="px-4 py-3">Product</th>
                                 <th className="px-4 py-3">Current sold</th>
-                                <th className="px-4 py-3">Returned items</th>
+                                <th className="px-4 py-3">
+                                  <div className="flex flex-col items-start gap-2 normal-case">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-stone-600">
+                                      Returned items
+                                    </span>
+                                    <ThresholdUnitToggle
+                                      mode={quantityMode}
+                                      onModeChange={handleQuantityModeChange}
+                                      product={quantityToggleProduct}
+                                      size="sm"
+                                      alwaysShow
+                                      fallbackStockUnitLabel="Cartons"
+                                      fallbackBaseUnitLabel="Pieces"
+                                    />
+                                  </div>
+                                </th>
                                 <th className="px-4 py-3" />
                               </tr>
                             </thead>
@@ -431,7 +457,8 @@ export function ClientReturnPanel({
                                   quantityMode,
                                   units
                                 );
-                                const unitLabel = quantityEntryLabel(quantityMode, units);
+                                const unitName = quantityModeUnitName(quantityMode, units);
+                                const entryHint = quantityEntryLabel(quantityMode, units);
                                 const preview = formatQuantityEntryPreview(
                                   Number(returnQty),
                                   quantityMode,
@@ -451,18 +478,19 @@ export function ClientReturnPanel({
                                       <p className="text-xs text-stone-500">{line.brandName}</p>
                                     </td>
                                     <td className="px-4 py-3">
-                                      <StockQuantityDisplay
-                                        quantity={line.soldQuantity}
-                                        stockUnit={line.stockUnit}
-                                        unitsPerStockUnit={line.unitsPerStockUnit}
-                                        baseUnit={line.baseUnit}
-                                        size="sm"
-                                      />
+                                      <span className="text-sm font-semibold tabular-nums text-stone-900">
+                                        {formatQuantityForMode(
+                                          line.soldQuantity,
+                                          quantityMode,
+                                          units
+                                        )}
+                                      </span>
                                       {line.returnedQuantity > 0 ? (
                                         <p className="mt-1 text-xs text-stone-500">
                                           Already returned:{" "}
-                                          {formatBaseQuantityWithStockUnit(
+                                          {formatQuantityForMode(
                                             line.returnedQuantity,
+                                            quantityMode,
                                             units
                                           )}
                                         </p>
@@ -488,15 +516,15 @@ export function ClientReturnPanel({
                                           }
                                           className="form-input w-28"
                                           placeholder="0"
-                                          aria-label={`Return quantity in ${unitLabel}`}
+                                          aria-label={entryHint}
                                         />
                                         <span className="text-xs font-medium text-stone-500">
-                                          {unitLabel}
+                                          {unitName}
                                         </span>
                                       </div>
                                       {canReturn ? (
                                         <p className="mt-1 text-xs text-stone-500">
-                                          Max {maxDisplay} {unitLabel}
+                                          Max {maxDisplay} {unitName}
                                           {preview ? ` · ${preview}` : ""}
                                         </p>
                                       ) : (

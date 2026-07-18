@@ -6,8 +6,10 @@ import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
 import { formatDueTime } from "@/lib/checklists/formatDueTime";
+import { notificationDisplayTitle } from "@/lib/notifications/notificationDisplayTitle";
 import type { AppNotification } from "@/types/notification";
 
 type NotificationsContentProps = {
@@ -65,22 +67,20 @@ export function NotificationsContent({ checklistsHref }: NotificationsContentPro
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-stone-900 sm:text-3xl">Notifications</h1>
-          <p className="mt-2 text-base text-stone-500">
-            Checklist reminders stay here until you complete the task.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => void load()} loading={loading}>
-            Refresh
-          </Button>
-          <Link href={checklistsHref}>
-            <Button>Open daily tasks</Button>
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title="Notifications"
+        description="Checklist reminders stay here until you complete the task."
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => void load()} loading={loading}>
+              Refresh
+            </Button>
+            <Link href={checklistsHref}>
+              <Button>Open daily tasks</Button>
+            </Link>
+          </>
+        }
+      />
 
       <Alert message={error} />
 
@@ -127,10 +127,14 @@ export function NotificationsContent({ checklistsHref }: NotificationsContentPro
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="font-bold text-stone-900">{n.title}</p>
+                    <p className="font-bold text-stone-900">
+                      {notificationDisplayTitle(n)}
+                    </p>
                     <p className="mt-1 text-sm text-stone-600">{n.message}</p>
                     <p className="mt-2 text-xs text-stone-400">
-                      {n.checklistTitle} · {n.taskTitle}
+                      {n.type === "ADMIN_REMINDER"
+                        ? `From ${n.taskTitle || "Administrator"}`
+                        : `${n.checklistTitle} · ${n.taskTitle}`}
                       {n.dueTime ? ` · due ${formatDueTime(n.dueTime)}` : ""}
                     </p>
                     <p className="mt-1 text-xs text-stone-400">

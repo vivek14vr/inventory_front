@@ -108,6 +108,7 @@ function StockOutSingleForm({
     allowedWarehouseIds
   );
 
+  /** Source warehouses the user may send from (permission-scoped). */
   const warehouseOptions = useMemo(() => {
     let list = warehouses;
     if (allowedWarehouseIds?.length) {
@@ -116,9 +117,16 @@ function StockOutSingleForm({
     return list.filter((w) => w.isActive);
   }, [warehouses, allowedWarehouseIds]);
 
+  /**
+   * Destinations: any other active warehouse. Senders do not need access at
+   * the receiving site — only stock.out at the source.
+   */
   const destinationOptions = useMemo(
-    () => warehouseOptions.filter((w) => w.id !== resolvedWarehouseId),
-    [warehouseOptions, resolvedWarehouseId]
+    () =>
+      warehouses.filter(
+        (w) => w.isActive && w.id !== resolvedWarehouseId
+      ),
+    [warehouses, resolvedWarehouseId]
   );
 
   const selectedWarehouse = warehouseOptions.find((w) => w.id === resolvedWarehouseId);
@@ -353,6 +361,13 @@ function StockOutSingleForm({
         setSubmitting(false);
         return;
       }
+      if (currentBalance !== null && baseQty > currentBalance) {
+        setError(
+          `Insufficient stock. Available: ${formatBaseQuantityWithStockUnit(currentBalance, selectedProduct)}`
+        );
+        setSubmitting(false);
+        return;
+      }
       const result = await api.stock.stockOut({
         ...(resolvedWarehouseId ? { warehouseId: resolvedWarehouseId } : {}),
         brandId,
@@ -465,7 +480,7 @@ function StockOutSingleForm({
             fetchSuggestions={fetchProductSuggestions}
             placeholder="Search primary or secondary name…"
             ariaLabel="Search products"
-            inputClassName="form-input w-full"
+            inputClassName="form-input w-full !pl-11"
             emptyMessage={(term) => `No products match “${term}”`}
           />
           <SelectionGrid

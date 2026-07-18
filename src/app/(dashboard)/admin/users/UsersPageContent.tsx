@@ -3,10 +3,12 @@
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { AUTH_ROUTES } from "@/lib/auth/constants";
 import {
   defaultWarehouseOperatorPermissions,
   hasWarehouseScopedPermission,
+  isAdminRole,
   type PermissionGrant,
   type PermissionModuleDefinition,
 } from "@/lib/auth/permissions";
@@ -31,6 +33,8 @@ const emptyForm = {
 };
 
 export function UsersPageContent() {
+  const { user: currentUser } = useAuth();
+  const canSetPassword = isAdminRole(currentUser?.role ?? "");
   const pathname = usePathname();
   const auditHref = pathname?.startsWith("/app")
     ? AUTH_ROUTES.appAudit
@@ -46,6 +50,10 @@ export function UsersPageContent() {
   const [editing, setEditing] = useState<PublicUser | null>(null);
   const [editPermissions, setEditPermissions] = useState<PermissionGrant[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [passwordTarget, setPasswordTarget] = useState<PublicUser | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -174,6 +182,55 @@ export function UsersPageContent() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to update user");
+    }
+  }
+
+  function openSetPassword(user: PublicUser) {
+    setPasswordTarget(user);
+    setNewPassword("");
+    setConfirmPassword("");
+    setError("");
+    setSuccess("");
+    setEditing(null);
+    setShowForm(false);
+  }
+
+  function closeSetPassword() {
+    setPasswordTarget(null);
+    setNewPassword("");
+    setConfirmPassword("");
+  }
+
+  async function handleSetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!passwordTarget) return;
+    setError("");
+    setSuccess("");
+
+    if (newPassword.length < 8) {
+      setError("Password must be at least 8 characters");
+      return;
+    }
+    if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      setError("Password must include uppercase, lowercase, and a number");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
+    setPasswordSubmitting(true);
+    try {
+      await api.users.update(passwordTarget.id, { password: newPassword });
+      setSuccess(
+        `Password updated for ${passwordTarget.name}. They must sign in again with the new password.`
+      );
+      closeSetPassword();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to set password");
+    } finally {
+      setPasswordSubmitting(false);
     }
   }
 
@@ -452,6 +509,50 @@ export function UsersPageContent() {
         </div>
       )}
 
+      {passwordTarget && (
+        <form
+          onSubmit={(e) => void handleSetPassword(e)}
+          className="space-y-5 rounded-2xl border-2 border-orange-300 bg-white p-5 sm:p-6"
+        >
+          <div>
+            <h2 className="text-xl font-bold text-stone-900">
+              Set password — {passwordTarget.name}
+            </h2>
+            <p className="mt-1 text-base text-stone-500">{passwordTarget.email}</p>
+            <p className="mt-2 text-sm text-stone-600">
+              They will be signed out everywhere and must use this password next
+              time they log in. Use at least 8 characters with uppercase,
+              lowercase, and a number.
+            </p>
+          </div>
+          <Field
+            label="New password"
+            type="password"
+            value={newPassword}
+            onChange={setNewPassword}
+          />
+          <Field
+            label="Confirm password"
+            type="password"
+            value={confirmPassword}
+            onChange={setConfirmPassword}
+          />
+          <div className="flex flex-wrap gap-3">
+            <Button type="submit" size="xl" loading={passwordSubmitting}>
+              {passwordSubmitting ? "Saving…" : "Save password"}
+            </Button>
+            <Button
+              type="button"
+              size="xl"
+              variant="secondary"
+              onClick={closeSetPassword}
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+
       <section className="space-y-4">
         <h2 className="text-lg font-bold text-stone-800">People</h2>
 
@@ -557,6 +658,16 @@ export function UsersPageContent() {
                           Edit access
                         </Button>
                       )}
+                      {canSetPassword ? (
+                        <Button
+                          type="button"
+                          size="lg"
+                          variant="outline"
+                          onClick={() => openSetPassword(u)}
+                        >
+                          Set password
+                        </Button>
+                      ) : null}
                       <Button
                         type="button"
                         size="lg"

@@ -875,6 +875,9 @@ export const api = {
       description?: string;
       assignedUserIds: string[];
       tasks: Array<{ title: string; sortOrder?: number; dueTime?: string }>;
+      frequency?: import("@/types/checklist").ChecklistFrequency;
+      weekdays?: number[];
+      dayOfMonth?: number;
     }) =>
       apiClient<import("@/types/checklist").Checklist>("/checklists", {
         method: "POST",
@@ -888,6 +891,9 @@ export const api = {
         assignedUserIds: string[];
         tasks: Array<{ title: string; sortOrder?: number; dueTime?: string }>;
         isActive: boolean;
+        frequency: import("@/types/checklist").ChecklistFrequency;
+        weekdays: number[];
+        dayOfMonth: number;
       }>
     ) =>
       apiClient<import("@/types/checklist").Checklist>(`/checklists/${id}`, {
@@ -923,6 +929,11 @@ export const api = {
         "/notifications/sync",
         { method: "POST", body: JSON.stringify(date ? { date } : {}) }
       ),
+    send: (data: { userId: string; title: string; message: string }) =>
+      apiClient<import("@/types/notification").AppNotification>(
+        "/notifications/send",
+        { method: "POST", body: JSON.stringify(data) }
+      ),
     markRead: (id: string) =>
       apiClient<import("@/types/notification").AppNotification>(
         `/notifications/${id}/read`,
@@ -932,6 +943,20 @@ export const api = {
       apiClient<{ updated: number }>("/notifications/read-all", {
         method: "POST",
       }),
+  },
+
+  settings: {
+    checklistReminders: {
+      get: () =>
+        apiClient<import("@/types/settings").ChecklistReminderSettings>(
+          "/settings/checklist-reminders"
+        ),
+      update: (data: import("@/types/settings").ChecklistReminderSettings) =>
+        apiClient<import("@/types/settings").ChecklistReminderSettings>(
+          "/settings/checklist-reminders",
+          { method: "PUT", body: JSON.stringify(data) }
+        ),
+    },
   },
 
   permissions: {

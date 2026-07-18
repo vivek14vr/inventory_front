@@ -6,6 +6,7 @@ import { ClientImportPanel } from "@/components/imports/ClientImportPanel";
 import { ProductImportPanel } from "@/components/imports/ProductImportPanel";
 import { SalesImportPanel } from "@/components/imports/SalesImportPanel";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 type ImportMode = "products" | "sales" | "clients";
 
@@ -27,14 +28,10 @@ function AdminImportsPageContent() {
 
   return (
     <div className="space-y-8 text-zinc-900">
-      <div>
-        <h1 className="text-2xl font-semibold text-zinc-900">Imports</h1>
-        <p className="mt-1 text-sm text-zinc-600">
-          Import products or clients from Excel, or record direct-sell stock outs from a
-          Tally-style sales register. All flows let you preview and merge matches before
-          updating the system.
-        </p>
-      </div>
+      <PageHeader
+        title="Imports"
+        description="Import products or clients from Excel, or record direct-sell stock outs from a Tally-style sales register. All flows let you preview and merge matches before updating the system."
+      />
 
       <div className="inline-flex flex-wrap rounded-lg border border-zinc-200 bg-zinc-50 p-1">
         <button

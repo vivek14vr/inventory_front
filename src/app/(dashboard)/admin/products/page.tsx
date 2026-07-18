@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { ButtonSelect } from "@/components/ui/ButtonSelect";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { usePagination } from "@/hooks/usePagination";
@@ -229,14 +230,10 @@ export default function AdminProductsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-zinc-900">Products</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Primary name + brand must be unique (case-insensitive). Set an overall total
-          low-stock alert, then independent alerts for each warehouse below. Blank values
-          default to {DEFAULT_LOW_STOCK_STOCK_UNITS} cartons.
-        </p>
-      </div>
+      <PageHeader
+        title="Products"
+        description={`Primary name + brand must be unique (case-insensitive). Set an overall total low-stock alert, then independent alerts for each warehouse below. Blank values default to ${DEFAULT_LOW_STOCK_STOCK_UNITS} cartons.`}
+      />
 
       <div className="flex flex-wrap items-center gap-4 justify-between">
         <div>
@@ -259,31 +256,33 @@ export default function AdminProductsPage() {
             emptyMessage={(term) => `No products match “${term}”`}
           />
         </div>
-        <ButtonSelect
-          label="Filter by brand"
-          value={filterBrandId}
-          onChange={(v) => {
-            setFilterBrandId(v);
-            resetPage();
-          }}
-          size="sm"
-          options={[
-            { value: "", label: "All brands" },
-            ...brands.map((b) => ({ value: b.id, label: b.name })),
-          ]}
-        />
-        <button
-          onClick={() => {
-            setShowForm(!showForm);
-            setForm(emptyForm);
-            setWarehouseThresholds({});
-            setWarehouseThresholdRows([]);
-            setThresholdMode("units");
-          }}
-          className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800"
-        >
-          {showForm ? "Cancel" : "Add product"}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <ButtonSelect
+            label="Filter by brand"
+            value={filterBrandId}
+            onChange={(v) => {
+              setFilterBrandId(v);
+              resetPage();
+            }}
+            size="sm"
+            options={[
+              { value: "", label: "All brands" },
+              ...brands.map((b) => ({ value: b.id, label: b.name })),
+            ]}
+          />
+          <button
+            onClick={() => {
+              setShowForm(!showForm);
+              setForm(emptyForm);
+              setWarehouseThresholds({});
+              setWarehouseThresholdRows([]);
+              setThresholdMode("units");
+            }}
+            className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800"
+          >
+            {showForm ? "Cancel" : "Add product"}
+          </button>
+        </div>
       </div>
 
       <Alert message={error} />
@@ -464,8 +463,7 @@ export default function AdminProductsPage() {
         <table className="w-full text-left text-sm">
           <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-500">
             <tr>
-              <th className="px-4 py-3">Primary name</th>
-              <th className="px-4 py-3">Secondary name</th>
+              <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Brand</th>
               <th className="px-4 py-3">Units</th>
               <th className="px-4 py-3">Low stock</th>
@@ -476,21 +474,27 @@ export default function AdminProductsPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-zinc-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-zinc-500">
                   Loading…
                 </td>
               </tr>
             ) : products.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-zinc-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-zinc-500">
                   No products
                 </td>
               </tr>
             ) : (
               products.map((p) => (
                 <tr key={p.id} className="border-t border-zinc-100">
-                  <td className="px-4 py-3 font-medium">{p.name}</td>
-                  <td className="px-4 py-3 text-zinc-600">{formatSecondaryName(p.secondaryName)}</td>
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-zinc-900">{p.name}</p>
+                    {p.secondaryName?.trim() ? (
+                      <p className="mt-0.5 text-sm text-zinc-500">
+                        {formatSecondaryName(p.secondaryName)}
+                      </p>
+                    ) : null}
+                  </td>
                   <td className="px-4 py-3 text-zinc-600">{p.brand.name}</td>
                   <td className="px-4 py-3 text-zinc-600">
                     {formatProductUnitSummary(p)}

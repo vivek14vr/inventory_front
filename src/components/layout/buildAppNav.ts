@@ -77,7 +77,7 @@ export function buildAppNavGroups(
       Permission.TRANSFERS_MANAGE,
     ])
   ) {
-    moreMenu.push({ href: AUTH_ROUTES.appTransfers, label: "Transfer List" });
+    moreMenu.push({ href: AUTH_ROUTES.appTransfers, label: "Transfer History" });
   }
   if (hasAnyPermission(role, permissions, [Permission.IMPORTS_MANAGE])) {
     moreMenu.push({ href: AUTH_ROUTES.appImports, label: "Imports" });
@@ -127,7 +127,6 @@ export function buildAppNavGroups(
     ])
   ) {
     moreMenu.push({ href: AUTH_ROUTES.appChecklists, label: "Daily Tasks" });
-    moreMenu.push({ href: AUTH_ROUTES.appNotifications, label: "Notifications" });
   }
 
   const groups: NavGroup[] = [];

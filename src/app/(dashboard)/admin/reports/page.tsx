@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useState, type Dispatch, type SetStat
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { ButtonSelect } from "@/components/ui/ButtonSelect";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import { ThresholdUnitToggle } from "@/components/products/ThresholdUnitToggle";
 import {
@@ -262,14 +263,10 @@ export default function AdminReportsPage() {
 
   return (
     <div className="space-y-6 text-zinc-900">
-      <div>
-        <h1 className="text-2xl font-semibold text-zinc-900">Reports</h1>
-        <p className="mt-1 text-sm text-zinc-600">
-          The table updates automatically when you change filters. Stock In, Stock Out,
-          and Transfers default to the last 30 days. Sales reports show all invoices
-          until you set a date range.
-        </p>
-      </div>
+      <PageHeader
+        title="Reports"
+        description="The table updates automatically when you change filters. Stock In, Stock Out, and Transfers default to the last 30 days. Sales reports show all invoices until you set a date range."
+      />
 
       <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-6">
         <ButtonSelect

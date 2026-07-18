@@ -1,4 +1,7 @@
-export type NotificationType = "CHECKLIST_PENDING" | "CHECKLIST_REMINDER";
+export type NotificationType =
+  | "CHECKLIST_PENDING"
+  | "CHECKLIST_REMINDER"
+  | "ADMIN_REMINDER";
 
 export type AppNotification = {
   id: string;

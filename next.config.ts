@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const apiProxyTarget =
@@ -21,8 +21,10 @@ const allowedDevOrigins = [
 
 const nextConfig: NextConfig = {
   allowedDevOrigins,
+  // Keep turbopack rooted on the frontend app. Pointing at the repo parent
+  // watches backend files and causes endless Next.js reloads during `npm run dev`.
   turbopack: {
-    root: resolve(projectRoot, ".."),
+    root: projectRoot,
   },
   async rewrites() {
     return [
