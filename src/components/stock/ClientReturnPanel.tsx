@@ -1,16 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { StockFlowBackButton } from "@/components/stock/StockFlowBar";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { Pagination } from "@/components/ui/Pagination";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
+import { ThresholdUnitToggle } from "@/components/products/ThresholdUnitToggle";
 import { usePagination } from "@/hooks/usePagination";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { productDisplayName } from "@/lib/products/productDisplayName";
-import { formatBaseQuantityWithStockUnit } from "@/lib/products/productUnits";
+import {
+  formatBaseQuantityWithStockUnit,
+  formatQuantityEntryPreview,
+  quantityEntryLabel,
+  thresholdBaseToDisplay,
+  thresholdDisplayToBase,
+  usesStockUnit,
+  type QuantityEntryMode,
+} from "@/lib/products/productUnits";
 import { validatePositiveInteger } from "@/lib/validation/quantity";
 import { api, ApiError } from "@/lib/api/client";
 import type {
@@ -24,6 +33,14 @@ type ClientReturnPanelProps = {
   defaultWarehouseId?: string;
   onBack?: () => void;
 };
+
+function lineUnitFields(line: ClientReturnInvoiceLine) {
+  return {
+    stockUnit: line.stockUnit,
+    unitsPerStockUnit: line.unitsPerStockUnit,
+    baseUnit: line.baseUnit,
+  };
+}
 
 function formatSaleDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", {
@@ -48,6 +65,7 @@ export function ClientReturnPanel({
   const [returnQtyDrafts, setReturnQtyDrafts] = useState<
     Record<string, Record<string, string>>
   >({});
+  const [quantityMode, setQuantityMode] = useState<QuantityEntryMode>("stockUnit");
   const [notesByInvoice, setNotesByInvoice] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -57,6 +75,42 @@ export function ClientReturnPanel({
 
   const [detailErrors, setDetailErrors] = useState<Record<string, string>>({});
   const listRequestIdRef = useRef(0);
+
+  const quantityToggleProduct = useMemo(() => {
+    for (const invoice of Object.values(invoiceDetails)) {
+      const line = invoice.lines.find((l) => usesStockUnit(lineUnitFields(l)));
+      if (line) return lineUnitFields(line);
+    }
+    return { stockUnit: "carton", unitsPerStockUnit: 1, baseUnit: "piece" };
+  }, [invoiceDetails]);
+
+  function handleQuantityModeChange(nextMode: QuantityEntryMode) {
+    setReturnQtyDrafts((prev) => {
+      const next: Record<string, Record<string, string>> = {};
+      for (const [invoiceId, drafts] of Object.entries(prev)) {
+        const invoice = invoiceDetails[invoiceId];
+        next[invoiceId] = {};
+        for (const [movementId, display] of Object.entries(drafts)) {
+          const line = invoice?.lines.find((l) => l.saleMovementId === movementId);
+          if (!line || !display.trim()) {
+            next[invoiceId][movementId] = display;
+            continue;
+          }
+          const base = thresholdDisplayToBase(
+            display,
+            quantityMode,
+            lineUnitFields(line)
+          );
+          next[invoiceId][movementId] =
+            base == null
+              ? display
+              : thresholdBaseToDisplay(base, nextMode, lineUnitFields(line));
+        }
+      }
+      return next;
+    });
+    setQuantityMode(nextMode);
+  }
 
   const loadInvoiceList = useCallback(async () => {
     const requestId = ++listRequestIdRef.current;
@@ -180,15 +234,23 @@ export function ClientReturnPanel({
     line: ClientReturnInvoiceLine
   ) {
     const raw = returnQtyDrafts[invoiceId]?.[line.saleMovementId] ?? "";
-    const qty = Number.parseInt(raw, 10);
-    const qtyError = validatePositiveInteger(qty, "Return quantity");
-    if (!Number.isFinite(qty) || qtyError) {
+    const units = lineUnitFields(line);
+    const qty = thresholdDisplayToBase(raw, quantityMode, units);
+    const qtyError =
+      qty == null ? "Enter how many items are being returned" : validatePositiveInteger(qty, "Return quantity");
+    if (qty == null || qtyError) {
       setError(qtyError ?? "Enter how many items are being returned");
       return;
     }
     if (qty > line.returnableQuantity) {
+      const maxDisplay = thresholdBaseToDisplay(
+        line.returnableQuantity,
+        quantityMode,
+        units
+      );
+      const unitLabel = quantityEntryLabel(quantityMode, units);
       setError(
-        `Cannot return more than ${line.returnableQuantity} remaining on this line`
+        `Cannot return more than ${maxDisplay} ${unitLabel} remaining on this line`
       );
       return;
     }
@@ -210,14 +272,9 @@ export function ClientReturnPanel({
       }
 
       const productName = productDisplayName(line);
-      const unitFields = {
-        stockUnit: line.stockUnit,
-        unitsPerStockUnit: line.unitsPerStockUnit,
-        baseUnit: line.baseUnit,
-      };
 
       setSuccess(
-        `Returned ${formatBaseQuantityWithStockUnit(result.quantity, unitFields)} of ${productName} to ${invoice.warehouse.name} (invoice ${invoice.invoiceNumber}). Stock is now ${formatBaseQuantityWithStockUnit(result.balance, unitFields)}.`
+        `Returned ${formatBaseQuantityWithStockUnit(result.quantity, units)} of ${productName} to ${invoice.warehouse.name} (invoice ${invoice.invoiceNumber}). Stock is now ${formatBaseQuantityWithStockUnit(result.balance, units)}.`
       );
       await refreshAfterChange(invoiceId);
     } catch (err) {
@@ -236,7 +293,7 @@ export function ClientReturnPanel({
           <h2 className="text-lg font-bold text-stone-900">Client return by invoice</h2>
           <p className="mt-1 text-sm text-stone-600">
             Search below with client, sell date, and warehouse. Open an invoice and enter
-            how many pieces of each product are being returned to the warehouse.
+            how many cartons or pieces of each product are being returned.
           </p>
         </div>
 
@@ -250,6 +307,21 @@ export function ClientReturnPanel({
             className="form-input mt-1"
             placeholder="Invoice number, client, or product…"
           />
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex min-w-[12rem] flex-col gap-1">
+            <span className="text-xs font-medium text-stone-500">Return quantities in</span>
+            <ThresholdUnitToggle
+              mode={quantityMode}
+              onModeChange={handleQuantityModeChange}
+              product={quantityToggleProduct}
+              size="sm"
+              alwaysShow
+              fallbackStockUnitLabel="Cartons"
+              fallbackBaseUnitLabel="Pieces"
+            />
+          </div>
         </div>
       </div>
 
@@ -353,6 +425,20 @@ export function ClientReturnPanel({
                                 const returnQty =
                                   returnQtyDrafts[item.id]?.[line.saleMovementId] ?? "";
                                 const canReturn = line.returnableQuantity > 0;
+                                const units = lineUnitFields(line);
+                                const maxDisplay = thresholdBaseToDisplay(
+                                  line.returnableQuantity,
+                                  quantityMode,
+                                  units
+                                );
+                                const unitLabel = quantityEntryLabel(quantityMode, units);
+                                const preview = formatQuantityEntryPreview(
+                                  Number(returnQty),
+                                  quantityMode,
+                                  units
+                                );
+                                const allowDecimal =
+                                  quantityMode === "stockUnit" && usesStockUnit(units);
                                 return (
                                   <tr
                                     key={line.saleMovementId}
@@ -377,39 +463,47 @@ export function ClientReturnPanel({
                                           Already returned:{" "}
                                           {formatBaseQuantityWithStockUnit(
                                             line.returnedQuantity,
-                                            {
-                                              stockUnit: line.stockUnit,
-                                              unitsPerStockUnit: line.unitsPerStockUnit,
-                                              baseUnit: line.baseUnit,
-                                            }
+                                            units
                                           )}
                                         </p>
                                       ) : null}
                                     </td>
                                     <td className="px-4 py-3">
-                                      <input
-                                        type="number"
-                                        min={1}
-                                        max={line.returnableQuantity}
-                                        value={returnQty}
-                                        disabled={!canReturn || submitting !== null}
-                                        onChange={(e) =>
-                                          setReturnQtyDrafts((prev) => ({
-                                            ...prev,
-                                            [item.id]: {
-                                              ...prev[item.id],
-                                              [line.saleMovementId]: e.target.value,
-                                            },
-                                          }))
-                                        }
-                                        className="form-input w-28"
-                                        placeholder="0"
-                                      />
-                                      {!canReturn ? (
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <input
+                                          type="number"
+                                          min={allowDecimal ? 0 : 1}
+                                          step={allowDecimal ? "any" : 1}
+                                          max={maxDisplay || undefined}
+                                          value={returnQty}
+                                          disabled={!canReturn || submitting !== null}
+                                          onChange={(e) =>
+                                            setReturnQtyDrafts((prev) => ({
+                                              ...prev,
+                                              [item.id]: {
+                                                ...prev[item.id],
+                                                [line.saleMovementId]: e.target.value,
+                                              },
+                                            }))
+                                          }
+                                          className="form-input w-28"
+                                          placeholder="0"
+                                          aria-label={`Return quantity in ${unitLabel}`}
+                                        />
+                                        <span className="text-xs font-medium text-stone-500">
+                                          {unitLabel}
+                                        </span>
+                                      </div>
+                                      {canReturn ? (
+                                        <p className="mt-1 text-xs text-stone-500">
+                                          Max {maxDisplay} {unitLabel}
+                                          {preview ? ` · ${preview}` : ""}
+                                        </p>
+                                      ) : (
                                         <p className="mt-1 text-xs text-stone-500">
                                           Nothing left to return
                                         </p>
-                                      ) : null}
+                                      )}
                                     </td>
                                     <td className="px-4 py-3">
                                       <Button
