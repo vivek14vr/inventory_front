@@ -144,12 +144,23 @@ export function hasPermission(
 ): boolean {
   if (isAdminRole(role)) return true;
   const grants = permissions ?? [];
-  return grants.some((g) => {
-    if (g.code !== code) return false;
-    if (!isWarehouseScopedPermission(code)) return true;
-    if (!warehouseId) return true;
-    return g.warehouseId === warehouseId;
-  });
+  if (isWarehouseScopedPermission(code)) {
+    if (!warehouseId) return false;
+    return grants.some(
+      (g) => g.code === code && g.warehouseId === warehouseId
+    );
+  }
+  return grants.some((g) => g.code === code);
+}
+
+/** True if the user holds the permission at any warehouse (or globally). */
+export function hasPermissionSomewhere(
+  role: string,
+  permissions: PermissionGrant[] | undefined,
+  code: PermissionCode
+): boolean {
+  if (isAdminRole(role)) return true;
+  return (permissions ?? []).some((g) => g.code === code);
 }
 
 export function hasAnyPermission(
@@ -157,7 +168,7 @@ export function hasAnyPermission(
   permissions: PermissionGrant[] | undefined,
   codes: PermissionCode[]
 ): boolean {
-  return codes.some((code) => hasPermission(role, permissions, code));
+  return codes.some((code) => hasPermissionSomewhere(role, permissions, code));
 }
 
 export function hasAllPermissions(
@@ -165,7 +176,7 @@ export function hasAllPermissions(
   permissions: PermissionGrant[] | undefined,
   codes: PermissionCode[]
 ): boolean {
-  return codes.every((code) => hasPermission(role, permissions, code));
+  return codes.every((code) => hasPermissionSomewhere(role, permissions, code));
 }
 
 export function canWarehouseReturn(

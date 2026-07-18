@@ -8,7 +8,7 @@ import { StockFlowBackButton } from "@/components/stock/StockFlowBar";
 import { WarehouseSelect } from "@/components/stock/WarehouseSelect";
 import { shouldPickWarehouse, resolveWarehouseId } from "@/components/stock/stockFlowUtils";
 import { Alert } from "@/components/ui/Alert";
-import { hasPermission, Permission } from "@/lib/auth/permissions";
+import { hasPermission, hasPermissionSomewhere, Permission } from "@/lib/auth/permissions";
 
 type ReturnPanelProps = {
   requireWarehouse?: boolean;
@@ -57,7 +57,11 @@ export function ReturnPanel({
         hasPermission(user.role, user.permissions, Permission.RETURNS_CLIENT, id)
       );
     }
-    return hasPermission(user.role, user.permissions, Permission.RETURNS_CLIENT);
+    return hasPermissionSomewhere(
+      user.role,
+      user.permissions,
+      Permission.RETURNS_CLIENT
+    );
   }, [user, allowedWarehouseIds, resolvedWarehouseId]);
 
   if (pickWarehouse && !resolvedWarehouseId) {
