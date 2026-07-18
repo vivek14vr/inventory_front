@@ -7,6 +7,7 @@ import { ButtonSelect } from "@/components/ui/ButtonSelect";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import { ThresholdUnitToggle } from "@/components/products/ThresholdUnitToggle";
 import {
+  formatBaseQuantityWithStockUnit,
   formatBaseUnits,
   type QuantityEntryMode,
   usesStockUnit,
@@ -654,7 +655,6 @@ export default function AdminReportsPage() {
                           <tr className="border-t border-orange-100 bg-orange-50/30">
                             <td colSpan={columns.length + 1} className="px-5 py-4">
                               <SalesByBrandProductDetails
-                                brandName={brandName}
                                 products={products}
                                 quantityMode={quantityMode}
                               />
@@ -822,15 +822,50 @@ function rowToSalesInvoice(row: Record<string, unknown>): SalesByClientInvoice |
   };
 }
 
+function parseBrandProductSales(value: unknown): SalesByBrandProductSale[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (typeof item !== "object" || item == null) return [];
+    const raw = item as Record<string, unknown>;
+    if (typeof raw.quantity !== "number" || !Number.isFinite(raw.quantity)) {
+      return [];
+    }
+    return [
+      {
+        date: raw.date != null ? String(raw.date) : "",
+        clientName: typeof raw.clientName === "string" ? raw.clientName : "",
+        invoiceNumber:
+          typeof raw.invoiceNumber === "string" ? raw.invoiceNumber : "",
+        warehouse: typeof raw.warehouse === "string" ? raw.warehouse : "",
+        quantity: raw.quantity,
+      } satisfies SalesByBrandProductSale,
+    ];
+  });
+}
+
 function parseBrandProducts(value: unknown): SalesByBrandProduct[] {
   if (!Array.isArray(value)) return [];
-  return value.filter(
-    (item): item is SalesByBrandProduct =>
-      typeof item === "object" &&
-      item != null &&
-      typeof (item as SalesByBrandProduct).product === "string" &&
-      typeof (item as SalesByBrandProduct).quantity === "number"
-  );
+  return value.flatMap((item) => {
+    if (typeof item !== "object" || item == null) return [];
+    const raw = item as Record<string, unknown>;
+    if (typeof raw.product !== "string" || typeof raw.quantity !== "number") {
+      return [];
+    }
+    return [
+      {
+        product: raw.product,
+        quantity: raw.quantity,
+        saleCount: typeof raw.saleCount === "number" ? raw.saleCount : 0,
+        stockUnit: typeof raw.stockUnit === "string" ? raw.stockUnit : undefined,
+        unitsPerStockUnit:
+          typeof raw.unitsPerStockUnit === "number"
+            ? raw.unitsPerStockUnit
+            : undefined,
+        baseUnit: typeof raw.baseUnit === "string" ? raw.baseUnit : undefined,
+        sales: parseBrandProductSales(raw.sales),
+      } satisfies SalesByBrandProduct,
+    ];
+  });
 }
 
 function renderReportCell({
@@ -886,196 +921,158 @@ function renderReportCell({
 }
 
 function SalesByBrandProductDetails({
-  brandName,
   products,
   quantityMode,
 }: {
-  brandName: string;
   products: SalesByBrandProduct[];
   quantityMode: QuantityEntryMode;
 }) {
-  const [selectedProduct, setSelectedProduct] = useState<SalesByBrandProduct | null>(null);
-
-  return (
-    <>
-      <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
-        <div className="border-b border-stone-100 bg-stone-50/80 px-4 py-2.5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">
-            Products ({products.length})
-          </p>
-          <p className="text-sm font-semibold text-stone-900">{brandName}</p>
-        </div>
-        <table className="w-full text-left text-sm">
-          <thead className="bg-white text-[10px] font-bold uppercase tracking-wide text-stone-400">
-            <tr>
-              <th className="px-4 py-2 text-left">Product</th>
-              <th className="px-4 py-2 text-right">Quantity</th>
-              <th className="px-4 py-2 text-right">Sales</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.map((product, index) => (
-              <tr
-                key={`${product.product}-${index}`}
-                className="border-t border-stone-100"
-              >
-                <td className="px-4 py-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedProduct(product);
-                    }}
-                    className="text-left font-medium text-orange-800 underline-offset-2 transition hover:text-orange-950 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30"
-                  >
-                    {product.product}
-                  </button>
-                </td>
-                <td className="px-4 py-2 text-right">
-                  <ReportQuantityValue
-                    quantity={product.quantity}
-                    product={product}
-                    quantityMode={quantityMode}
-                    align="right"
-                  />
-                </td>
-                <td className="px-4 py-2 text-right font-bold tabular-nums text-stone-900">
-                  {product.saleCount.toLocaleString()}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {selectedProduct ? (
-        <BrandProductSalesDialog
-          brandName={brandName}
-          product={selectedProduct}
-          quantityMode={quantityMode}
-          onClose={() => setSelectedProduct(null)}
-        />
-      ) : null}
-    </>
+  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(
+    () => new Set()
   );
-}
 
-function BrandProductSalesDialog({
-  brandName,
-  product,
-  quantityMode,
-  onClose,
-}: {
-  brandName: string;
-  product: SalesByBrandProduct;
-  quantityMode: QuantityEntryMode;
-  onClose: () => void;
-}) {
-  const sales = parseBrandProductSales(product.sales);
+  function toggleProduct(productName: string) {
+    setExpandedProducts((prev) => {
+      const next = new Set(prev);
+      if (next.has(productName)) next.delete(productName);
+      else next.add(productName);
+      return next;
+    });
+  }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[2px]"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="brand-product-sales-title"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[min(80vh,40rem)] w-full max-w-2xl flex-col rounded-2xl border border-zinc-200 bg-white shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="border-b border-zinc-100 px-5 py-4">
-          <h2
-            id="brand-product-sales-title"
-            className="text-lg font-semibold text-zinc-900"
-          >
-            {product.product}
-          </h2>
-          <p className="mt-1 text-sm text-zinc-600">
-            {brandName} · {product.saleCount.toLocaleString()} sale
-            {product.saleCount === 1 ? "" : "s"} · total{" "}
-            <span className="inline-flex align-middle">
-              <ReportQuantityValue
-                quantity={product.quantity}
-                product={product}
-                quantityMode={quantityMode}
-                align="left"
-              />
-            </span>
-          </p>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {sales.length === 0 ? (
-            <p className="text-sm text-zinc-500">No sale details available for this product.</p>
-          ) : (
-            <div className="overflow-hidden rounded-xl border border-stone-200">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-stone-50 text-[10px] font-bold uppercase tracking-wide text-stone-500">
-                  <tr>
-                    <th className="px-3 py-2">Date</th>
-                    <th className="px-3 py-2">Client</th>
-                    <th className="px-3 py-2">Invoice</th>
-                    <th className="px-3 py-2">Warehouse</th>
-                    <th className="px-3 py-2 text-right">Quantity</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sales.map((sale, index) => (
-                    <tr
-                      key={`${sale.invoiceNumber}-${sale.date}-${index}`}
-                      className="border-t border-stone-100"
-                    >
-                      <td className="px-3 py-2 whitespace-nowrap text-stone-600">
-                        {formatCell(sale.date)}
-                      </td>
-                      <td className="px-3 py-2 font-medium text-stone-900">
-                        {sale.clientName || "—"}
-                      </td>
-                      <td className="px-3 py-2 text-stone-700">
-                        {sale.invoiceNumber || "—"}
-                      </td>
-                      <td className="px-3 py-2 text-stone-600">
-                        {sale.warehouse || "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <ReportQuantityValue
-                          quantity={sale.quantity}
-                          product={product}
-                          quantityMode={quantityMode}
-                          align="right"
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        <div className="flex justify-end border-t border-zinc-100 px-5 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
-          >
-            Close
-          </button>
-        </div>
+    <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+      <div className="border-b border-stone-100 bg-stone-50/80 px-4 py-2.5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">
+          Products · {products.length}
+        </p>
       </div>
+      <table className="w-full text-left text-sm">
+        <thead className="bg-white text-[10px] font-bold uppercase tracking-wide text-stone-400">
+          <tr>
+            <th className="w-8 px-3 py-2" aria-hidden />
+            <th className="px-4 py-2 text-left">Product</th>
+            <th className="px-4 py-2 text-right">Quantity</th>
+            <th className="px-4 py-2 text-right">Sales</th>
+          </tr>
+        </thead>
+        <tbody>
+          {products.map((product, index) => {
+            const productKey = `${product.product}-${index}`;
+            const sales = product.sales ?? [];
+            const canExpand = sales.length > 0;
+            const isExpanded = expandedProducts.has(productKey);
+
+            return (
+              <Fragment key={productKey}>
+                <tr
+                  className={`border-t border-stone-100 ${
+                    canExpand
+                      ? "cursor-pointer hover:bg-orange-50/50"
+                      : ""
+                  } ${isExpanded ? "bg-orange-50/30" : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (canExpand) toggleProduct(productKey);
+                  }}
+                  aria-expanded={canExpand ? isExpanded : undefined}
+                >
+                  <td className="px-3 py-2.5 text-center text-stone-400">
+                    {canExpand ? (
+                      <span className="inline-block text-xs" aria-hidden>
+                        {isExpanded ? "▼" : "▶"}
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-2.5 font-medium text-stone-900">
+                    {product.product}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-stone-800">
+                    <ReportQuantityValue
+                      quantity={product.quantity}
+                      product={product}
+                      quantityMode={quantityMode}
+                      align="right"
+                      compact
+                    />
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-bold tabular-nums text-stone-900">
+                    {product.saleCount.toLocaleString()}
+                  </td>
+                </tr>
+                {isExpanded && canExpand ? (
+                  <tr className="border-t border-orange-100 bg-orange-50/20">
+                    <td colSpan={4} className="px-4 py-3">
+                      <BrandProductSalesTable
+                        product={product}
+                        sales={sales}
+                        quantityMode={quantityMode}
+                      />
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-function parseBrandProductSales(value: unknown): SalesByBrandProductSale[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter(
-    (item): item is SalesByBrandProductSale =>
-      typeof item === "object" &&
-      item != null &&
-      typeof (item as SalesByBrandProductSale).quantity === "number"
+function BrandProductSalesTable({
+  product,
+  sales,
+  quantityMode,
+}: {
+  product: SalesByBrandProduct;
+  sales: SalesByBrandProductSale[];
+  quantityMode: QuantityEntryMode;
+}) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
+      <table className="w-full text-left text-sm">
+        <thead className="bg-stone-50 text-[10px] font-bold uppercase tracking-wide text-stone-500">
+          <tr>
+            <th className="px-3 py-2">Date</th>
+            <th className="px-3 py-2">Client</th>
+            <th className="px-3 py-2">Invoice</th>
+            <th className="px-3 py-2">Warehouse</th>
+            <th className="px-3 py-2 text-right">Quantity</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sales.map((sale, index) => (
+            <tr
+              key={`${sale.invoiceNumber}-${sale.date}-${index}`}
+              className="border-t border-stone-100"
+            >
+              <td className="px-3 py-2 whitespace-nowrap text-stone-600">
+                {formatCell(sale.date)}
+              </td>
+              <td className="px-3 py-2 font-medium text-stone-900">
+                {sale.clientName || "—"}
+              </td>
+              <td className="px-3 py-2 text-stone-700">
+                {sale.invoiceNumber || "—"}
+              </td>
+              <td className="px-3 py-2 text-stone-600">
+                {sale.warehouse || "—"}
+              </td>
+              <td className="px-3 py-2 text-right">
+                <ReportQuantityValue
+                  quantity={sale.quantity}
+                  product={product}
+                  quantityMode={quantityMode}
+                  align="right"
+                  compact
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -1157,6 +1154,7 @@ function ReportQuantityValue({
   product,
   quantityMode,
   align,
+  compact = false,
 }: {
   quantity: number;
   product?: {
@@ -1166,6 +1164,8 @@ function ReportQuantityValue({
   };
   quantityMode: QuantityEntryMode;
   align: "left" | "right";
+  /** Single-line qty text — avoids stacked cartons/pcs breaking inline headers. */
+  compact?: boolean;
 }) {
   const rowProduct = {
     stockUnit: product?.stockUnit,
@@ -1173,10 +1173,18 @@ function ReportQuantityValue({
     baseUnit: product?.baseUnit,
   };
 
-  if (quantityMode === "units" || !usesStockUnit(rowProduct)) {
+  if (quantityMode === "units" || !usesStockUnit(rowProduct) || compact) {
+    const text =
+      quantityMode === "units" || !usesStockUnit(rowProduct)
+        ? formatBaseUnits(quantity, rowProduct)
+        : formatBaseQuantityWithStockUnit(quantity, rowProduct);
     return (
-      <span className="whitespace-nowrap font-bold tabular-nums text-stone-900">
-        {formatBaseUnits(quantity, rowProduct)}
+      <span
+        className={`whitespace-nowrap font-bold tabular-nums text-stone-900 ${
+          align === "right" ? "text-right" : "text-left"
+        }`}
+      >
+        {text}
       </span>
     );
   }
