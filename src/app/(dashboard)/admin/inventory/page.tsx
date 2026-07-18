@@ -1402,7 +1402,7 @@ function MovementsView({ movements }: { movements: StockMovement[] }) {
                     )}
                   </DataTableTd>
                   <DataTableTd align="right" className="tabular-nums text-stone-700">
-                    {m.remainingStock === undefined ? (
+                    {typeof m.remainingStock !== "number" ? (
                       <span className="text-stone-300">—</span>
                     ) : quantityMode === "units" || !usesStockUnit(m.product) ? (
                       <span className="whitespace-nowrap">
