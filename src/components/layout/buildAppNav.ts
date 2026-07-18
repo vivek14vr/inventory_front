@@ -1,11 +1,8 @@
 import { AUTH_ROUTES } from "@/lib/auth/constants";
 import {
-  CLIENT_RETURN_PERMISSIONS,
   hasAllPermissions,
   hasAnyPermission,
   Permission,
-  STOCK_BALANCE_READ_PERMISSIONS,
-  WAREHOUSE_RETURN_PERMISSIONS,
   type PermissionGrant,
 } from "@/lib/auth/permissions";
 
@@ -47,15 +44,15 @@ export function buildAppNavGroups(
   }
   if (
     hasAnyPermission(role, permissions, [
-      ...CLIENT_RETURN_PERMISSIONS,
-      ...WAREHOUSE_RETURN_PERMISSIONS,
+      Permission.RETURNS_CLIENT,
+      Permission.RETURNS_WAREHOUSE,
     ])
   ) {
     mainMenu.push({ href: AUTH_ROUTES.appReturn, label: "Return" });
   }
   if (
     hasAnyPermission(role, permissions, [
-      ...STOCK_BALANCE_READ_PERMISSIONS,
+      Permission.STOCK_VIEW,
       Permission.INVENTORY_VIEW,
     ])
   ) {

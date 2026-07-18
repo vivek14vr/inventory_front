@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
+import { AppRouteGuard } from "@/components/auth/AppRouteGuard";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { buildAppNavGroups } from "@/components/layout/buildAppNav";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
@@ -54,7 +55,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       notificationsHref={AUTH_ROUTES.appNotifications}
       checklistsHref={AUTH_ROUTES.appChecklists}
     >
-      {children}
+      <AppRouteGuard>{children}</AppRouteGuard>
     </DashboardShell>
   );
 }

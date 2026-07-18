@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
@@ -11,7 +10,12 @@ import {
   type PermissionGrant,
   type PermissionModuleDefinition,
 } from "@/lib/auth/permissions";
+import { Alert } from "@/components/ui/Alert";
+import { Button, ButtonLink } from "@/components/ui/Button";
 import { ButtonSelect } from "@/components/ui/ButtonSelect";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PermissionEditor } from "@/components/users/PermissionEditor";
 import type { PublicUser } from "@/types/auth";
 
@@ -36,6 +40,7 @@ export function UsersPageContent() {
   const [catalog, setCatalog] = useState<PermissionModuleDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState<PublicUser | null>(null);
@@ -66,7 +71,8 @@ export function UsersPageContent() {
   }, [load]);
 
   useEffect(() => {
-    if (!showForm || form.role !== "WAREHOUSE_USER" || warehouses.length === 0) return;
+    if (!showForm || form.role !== "WAREHOUSE_USER" || warehouses.length === 0)
+      return;
     if (form.warehouseId && form.permissions.length > 0) return;
     const wh = warehouses[0].id;
     setForm((f) => ({
@@ -74,12 +80,19 @@ export function UsersPageContent() {
       warehouseId: wh,
       permissions: defaultWarehouseOperatorPermissions(wh),
     }));
-  }, [showForm, form.role, form.warehouseId, form.permissions.length, warehouses]);
+  }, [
+    showForm,
+    form.role,
+    form.warehouseId,
+    form.permissions.length,
+    warehouses,
+  ]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setError("");
+    setSuccess("");
 
     if (
       form.role === "WAREHOUSE_USER" &&
@@ -105,6 +118,7 @@ export function UsersPageContent() {
       });
       setForm(emptyForm);
       setShowForm(false);
+      setSuccess("User created");
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to create user");
@@ -116,24 +130,34 @@ export function UsersPageContent() {
   async function handleSavePermissions() {
     if (!editing) return;
 
-    if (
-      editPermissions.length > 0 &&
-      !hasWarehouseScopedPermission(editPermissions)
-    ) {
+    if (editPermissions.length === 0) {
       setError(
-        "Staff users need at least one warehouse-scoped permission (e.g. Stock in for their warehouse)."
+        "Assign at least one module permission before saving. Use a quick preset if you are unsure."
+      );
+      return;
+    }
+
+    if (!hasWarehouseScopedPermission(editPermissions)) {
+      setError(
+        "Staff users need at least one warehouse permission (e.g. Stock in for their warehouse)."
       );
       return;
     }
 
     setSubmitting(true);
     setError("");
+    setSuccess("");
     try {
       await api.users.update(editing.id, { permissions: editPermissions });
       setEditing(null);
+      setSuccess(
+        `Access updated for ${editing.name}. They must log in again to use the new access.`
+      );
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to update permissions");
+      setError(
+        err instanceof ApiError ? err.message : "Failed to update permissions"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -141,8 +165,12 @@ export function UsersPageContent() {
 
   async function toggleActive(user: PublicUser) {
     setError("");
+    setSuccess("");
     try {
       await api.users.update(user.id, { isActive: !user.isActive });
+      setSuccess(
+        user.isActive ? `${user.name} deactivated` : `${user.name} activated`
+      );
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to update user");
@@ -151,13 +179,30 @@ export function UsersPageContent() {
 
   function openEditPermissions(user: PublicUser) {
     setEditing(user);
-    setEditPermissions(user.permissions ?? []);
+    const existing = user.permissions ?? [];
+    if (
+      existing.length === 0 &&
+      user.role === "WAREHOUSE_USER" &&
+      user.warehouseId
+    ) {
+      setEditPermissions(defaultWarehouseOperatorPermissions(user.warehouseId));
+    } else {
+      setEditPermissions(existing);
+    }
     setShowForm(false);
+    setSuccess("");
+    setError("");
   }
 
-  function summarizeAccess(user: PublicUser): { headline: string; modules: string[] } {
+  function summarizeAccess(user: PublicUser): {
+    headline: string;
+    modules: string[];
+  } {
     if (user.role === "ADMIN") {
-      return { headline: "Full access", modules: ["All modules"] };
+      return {
+        headline: "Full access",
+        modules: catalog.map((m) => m.label),
+      };
     }
     const grants = user.permissions ?? [];
     if (grants.length === 0) {
@@ -178,33 +223,67 @@ export function UsersPageContent() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-zinc-900">Users & access</h1>
-          <p className="mt-1 max-w-2xl text-sm text-zinc-500">
-            Control what each staff member can do, module by module. Grant or revoke
-            individual actions (e.g. Stock in at Goregaon only). Every change is
-            recorded in the{" "}
-            <Link
-              href={auditHref}
-              className="font-medium text-orange-700 hover:text-orange-900"
+    <div className="space-y-8">
+      <PageHeader
+        title="Users & access"
+        description="Control what each person can do, module by module. Every change is recorded in the activity log."
+        actions={
+          <div className="flex flex-wrap gap-3">
+            <ButtonLink href={auditHref} variant="secondary" size="lg">
+              Activity log
+            </ButtonLink>
+            <Button
+              type="button"
+              size="xl"
+              variant={showForm ? "secondary" : "primary"}
+              onClick={() => {
+                setShowForm(!showForm);
+                setEditing(null);
+                setSuccess("");
+                setError("");
+              }}
             >
-              activity log
-            </Link>
-            .
-          </p>
+              {showForm ? "Cancel" : "Add user"}
+            </Button>
+          </div>
+        }
+      />
+
+      <section>
+        <h2 className="mb-3 text-lg font-bold text-stone-800">
+          App modules
+        </h2>
+        <p className="mb-4 text-sm text-stone-500">
+          These are the modules you can grant. Staff get only what you turn on;
+          admins get everything.
+        </p>
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+          {catalog.length === 0 && !loading
+            ? null
+            : (catalog.length > 0
+                ? catalog
+                : Array.from({ length: 8 }, (_, i) => ({
+                    id: `skeleton-${i}`,
+                    label: "…",
+                    description: "",
+                  }))
+              ).map((mod) => (
+                <div
+                  key={mod.id}
+                  className="rounded-2xl border-2 border-stone-200 bg-white px-4 py-4 shadow-sm"
+                >
+                  <p className="text-base font-bold text-stone-900 leading-snug">
+                    {mod.label}
+                  </p>
+                  {"description" in mod && mod.description ? (
+                    <p className="mt-1.5 line-clamp-2 text-xs text-stone-500">
+                      {mod.description}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
         </div>
-        <button
-          onClick={() => {
-            setShowForm(!showForm);
-            setEditing(null);
-          }}
-          className="shrink-0 rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800"
-        >
-          {showForm ? "Cancel" : "Add user"}
-        </button>
-      </div>
+      </section>
 
       <div className="grid gap-3 sm:grid-cols-3">
         <InfoCard
@@ -221,18 +300,21 @@ export function UsersPageContent() {
         />
       </div>
 
-      {error && (
-        <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
-      )}
+      <Alert message={error} />
+      <Alert message={success} type="success" />
 
       {showForm && (
         <form
           onSubmit={handleCreate}
-          className="space-y-4 rounded-xl border border-zinc-200 bg-white p-6"
+          className="space-y-6 rounded-2xl border-2 border-stone-200 bg-white p-5 sm:p-6"
         >
-          <h2 className="text-lg font-medium text-zinc-900">New user</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
+          <h2 className="text-xl font-bold text-stone-900">New user</h2>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field
+              label="Name"
+              value={form.name}
+              onChange={(v) => setForm({ ...form, name: v })}
+            />
             <Field
               label="Email"
               type="email"
@@ -248,6 +330,7 @@ export function UsersPageContent() {
             <ButtonSelect
               label="Role"
               value={form.role}
+              layout="grid"
               onChange={(v) =>
                 setForm({
                   ...form,
@@ -258,9 +341,14 @@ export function UsersPageContent() {
               options={[
                 {
                   value: "WAREHOUSE_USER",
-                  label: "Staff (custom module access)",
+                  label: "Staff",
+                  sublabel: "Custom module access",
                 },
-                { value: "ADMIN", label: "Admin (full access)" },
+                {
+                  value: "ADMIN",
+                  label: "Admin",
+                  sublabel: "Full access",
+                },
               ]}
             />
           </div>
@@ -271,6 +359,7 @@ export function UsersPageContent() {
                 <ButtonSelect
                   label="Home warehouse"
                   value={form.warehouseId}
+                  layout="grid"
                   onChange={(warehouseId) => {
                     setForm((f) => ({
                       ...f,
@@ -287,9 +376,8 @@ export function UsersPageContent() {
                   }))}
                   emptyMessage="No warehouses available"
                 />
-                <p className="mt-1 text-xs text-zinc-500">
-                  Default landing warehouse for dashboards and quick presets. Password
-                  is hashed on the server only.
+                <p className="mt-2 text-sm text-stone-500">
+                  Default landing warehouse for dashboards and quick presets.
                 </p>
               </div>
               <PermissionEditor
@@ -297,161 +385,203 @@ export function UsersPageContent() {
                 onChange={(permissions) => setForm({ ...form, permissions })}
                 warehouses={warehouses}
                 homeWarehouseId={form.warehouseId}
+                modules={catalog}
               />
             </>
           )}
 
           {form.role === "ADMIN" && (
-            <p className="rounded-lg bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+            <p className="rounded-2xl border-2 border-stone-100 bg-stone-50 px-5 py-4 text-base text-stone-600">
               Admins can use every screen and action. Use staff accounts when you
-              need limited access.
+              need limited module access.
             </p>
           )}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-          >
-            {submitting ? "Creating…" : "Create user"}
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <Button type="submit" size="xl" loading={submitting}>
+              {submitting ? "Creating…" : "Create user"}
+            </Button>
+            <Button
+              type="button"
+              size="xl"
+              variant="secondary"
+              onClick={() => {
+                setShowForm(false);
+                setForm(emptyForm);
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
         </form>
       )}
 
       {editing && (
-        <div className="space-y-4 rounded-xl border border-orange-200 bg-white p-6">
+        <div className="space-y-6 rounded-2xl border-2 border-orange-300 bg-white p-5 sm:p-6">
           <div>
-            <h2 className="text-lg font-medium text-zinc-900">
+            <h2 className="text-xl font-bold text-stone-900">
               Edit access — {editing.name}
             </h2>
-            <p className="mt-1 text-sm text-zinc-500">{editing.email}</p>
+            <p className="mt-1 text-base text-stone-500">{editing.email}</p>
           </div>
           <PermissionEditor
             value={editPermissions}
             onChange={setEditPermissions}
             warehouses={warehouses}
             homeWarehouseId={editing.warehouseId ?? undefined}
+            modules={catalog}
           />
-          <div className="flex gap-2">
-            <button
+          <div className="flex flex-wrap gap-3">
+            <Button
               type="button"
-              onClick={() => setEditing(null)}
-              className="rounded-lg border border-zinc-200 px-4 py-2 text-sm"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={submitting}
+              size="xl"
+              loading={submitting}
               onClick={() => void handleSavePermissions()}
-              className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
             >
               {submitting ? "Saving…" : "Save access"}
-            </button>
+            </Button>
+            <Button
+              type="button"
+              size="xl"
+              variant="secondary"
+              onClick={() => setEditing(null)}
+            >
+              Cancel
+            </Button>
           </div>
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-500">
-            <tr>
-              <th className="px-4 py-3">User</th>
-              <th className="px-4 py-3">Role</th>
-              <th className="px-4 py-3">Module access</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
-                  Loading…
-                </td>
-              </tr>
-            ) : users.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
-                  No users found
-                </td>
-              </tr>
-            ) : (
-              users.map((u) => {
-                const access = summarizeAccess(u);
-                return (
-                  <tr key={u.id} className="border-t border-zinc-100">
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-zinc-900">{u.name}</p>
-                      <p className="text-xs text-zinc-500">{u.email}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                          u.role === "ADMIN"
-                            ? "bg-purple-100 text-purple-800"
-                            : "bg-zinc-100 text-zinc-700"
-                        }`}
-                      >
-                        {u.role === "ADMIN" ? "Admin" : "Staff"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-zinc-800">{access.headline}</p>
-                      {access.modules.length > 0 && (
-                        <p className="mt-0.5 text-xs text-zinc-500">
-                          {access.modules.slice(0, 4).join(" · ")}
-                          {access.modules.length > 4
-                            ? ` · +${access.modules.length - 4} more`
-                            : ""}
+      <section className="space-y-4">
+        <h2 className="text-lg font-bold text-stone-800">People</h2>
+
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <LoadingSpinner label="Loading users…" />
+          </div>
+        ) : users.length === 0 ? (
+          <div className="rounded-2xl border-2 border-dashed border-stone-200 px-6 py-12 text-center">
+            <p className="text-base font-medium text-stone-500">No users yet</p>
+            <Button
+              type="button"
+              size="lg"
+              className="mt-4"
+              onClick={() => {
+                setShowForm(true);
+                setEditing(null);
+              }}
+            >
+              Add the first user
+            </Button>
+          </div>
+        ) : (
+          <ul className="space-y-4">
+            {users.map((u) => {
+              const access = summarizeAccess(u);
+              const warehouseName =
+                warehouses.find((w) => w.id === u.warehouseId)?.name ?? null;
+
+              return (
+                <li
+                  key={u.id}
+                  className="rounded-2xl border-2 border-stone-200 bg-white p-5 shadow-sm"
+                >
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0 flex-1 space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-xl font-bold text-stone-900">
+                          {u.name}
+                        </h3>
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-bold ${
+                            u.role === "ADMIN"
+                              ? "bg-stone-800 text-white"
+                              : "bg-orange-100 text-orange-900"
+                          }`}
+                        >
+                          {u.role === "ADMIN" ? "Admin" : "Staff"}
+                        </span>
+                        <StatusBadge active={u.isActive} />
+                      </div>
+                      <p className="text-sm text-stone-500">{u.email}</p>
+                      {warehouseName && u.role === "WAREHOUSE_USER" && (
+                        <p className="text-sm font-medium text-stone-600">
+                          Home warehouse:{" "}
+                          <span className="font-bold text-stone-800">
+                            {warehouseName}
+                          </span>
                         </p>
                       )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs ${
-                          u.isActive
-                            ? "bg-orange-100 text-orange-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
-                      >
-                        {u.isActive ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                    <td className="space-x-3 px-4 py-3 text-right">
+
+                      <div>
+                        <p className="text-sm font-bold text-stone-700">
+                          Module access · {access.headline}
+                        </p>
+                        {access.modules.length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {(u.role === "ADMIN"
+                              ? access.modules.slice(0, 6)
+                              : access.modules
+                            ).map((label) => (
+                              <span
+                                key={label}
+                                className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-1.5 text-sm font-semibold text-orange-900"
+                              >
+                                {label}
+                              </span>
+                            ))}
+                            {u.role === "ADMIN" && access.modules.length > 6 && (
+                              <span className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm font-semibold text-stone-600">
+                                +{access.modules.length - 6} more
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="mt-1 text-sm text-stone-400">
+                            No modules granted yet
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:flex-row lg:flex-col lg:items-stretch">
                       {u.role === "WAREHOUSE_USER" && (
-                        <button
+                        <Button
                           type="button"
+                          size="lg"
+                          variant={
+                            editing?.id === u.id ? "outline" : "primary"
+                          }
                           onClick={() => openEditPermissions(u)}
-                          className="text-xs font-medium text-orange-700 hover:text-orange-900"
                         >
                           Edit access
-                        </button>
+                        </Button>
                       )}
-                      <button
+                      <Button
                         type="button"
-                        onClick={() => toggleActive(u)}
-                        className="text-xs text-zinc-600 hover:text-zinc-900"
+                        size="lg"
+                        variant={u.isActive ? "danger" : "outline"}
+                        onClick={() => void toggleActive(u)}
                       >
                         {u.isActive ? "Deactivate" : "Activate"}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+                      </Button>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
 
 function InfoCard({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-zinc-50/50 p-4">
-      <p className="text-sm font-semibold text-zinc-900">{title}</p>
-      <p className="mt-1 text-xs leading-relaxed text-zinc-500">{body}</p>
+    <div className="rounded-2xl border-2 border-stone-200 bg-stone-50/60 p-5">
+      <p className="text-base font-bold text-stone-900">{title}</p>
+      <p className="mt-1.5 text-sm leading-relaxed text-stone-500">{body}</p>
     </div>
   );
 }
@@ -469,13 +599,13 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-zinc-700">{label}</label>
+      <label className="block text-sm font-bold text-stone-700">{label}</label>
       <input
         type={type}
         required
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+        className="mt-2 w-full min-h-12 rounded-2xl border-2 border-stone-200 bg-white px-4 py-3 text-base font-medium text-stone-900 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
       />
     </div>
   );

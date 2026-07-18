@@ -18,9 +18,14 @@ export type TokenRefreshResponse = {
   user: AuthUser;
 };
 
-let refreshInFlight: Promise<string | null> | null = null;
+export type RefreshSessionResult = {
+  accessToken: string;
+  user: AuthUser;
+};
 
-async function performRefresh(): Promise<string | null> {
+let refreshInFlight: Promise<RefreshSessionResult | null> | null = null;
+
+async function performRefresh(): Promise<RefreshSessionResult | null> {
   const storedRefresh = getRefreshToken();
   try {
     const response = await fetch(apiUrl("/auth/refresh"), {
@@ -47,13 +52,17 @@ async function performRefresh(): Promise<string | null> {
       refreshTokenExpiresIn: body.data.refreshTokenExpiresIn,
     });
     syncAccessTokenCookie();
-    return body.data.accessToken;
+    return {
+      accessToken: body.data.accessToken,
+      user: body.data.user,
+    };
   } catch {
     return null;
   }
 }
 
-export async function refreshAccessToken(): Promise<string | null> {
+/** Full refresh including the latest user/permissions from the server. */
+export async function refreshSession(): Promise<RefreshSessionResult | null> {
   if (typeof navigator !== "undefined" && "locks" in navigator) {
     return navigator.locks.request("inventory-auth-refresh", performRefresh);
   }
@@ -65,6 +74,12 @@ export async function refreshAccessToken(): Promise<string | null> {
   });
 
   return refreshInFlight;
+}
+
+/** @returns access token only — prefer refreshSession when you need updated user. */
+export async function refreshAccessToken(): Promise<string | null> {
+  const result = await refreshSession();
+  return result?.accessToken ?? null;
 }
 
 export async function getValidAccessToken(): Promise<string | null> {

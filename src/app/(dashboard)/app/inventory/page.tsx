@@ -30,13 +30,9 @@ import { getPrimaryWarehouseId } from "@/lib/auth/warehouseContext";
 
 function AppInventoryPageContent() {
   const { user } = useAuth();
-  const { can, canAny } = usePermissions();
+  const { can } = usePermissions();
   const warehouseId = getPrimaryWarehouseId(user) ?? "";
-  const useWarehouseBalances = canAny([
-    Permission.STOCK_VIEW,
-    Permission.STOCK_IN,
-    Permission.STOCK_OUT,
-  ]);
+  const useWarehouseBalances = can(Permission.STOCK_VIEW);
   const useCompanyInventory = can(Permission.INVENTORY_VIEW);
   const canToggleInventoryView = useWarehouseBalances && useCompanyInventory;
   const [inventoryView, setInventoryView] = useState<"warehouse" | "company">(

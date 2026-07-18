@@ -71,42 +71,28 @@ function accessCookieMaxAge(preferredSeconds?: number): number {
 }
 
 function readRefreshTokenFromStorage(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
-  } catch {
-    return null;
-  }
+  return null;
 }
 
-function writeRefreshTokenToStorage(refreshToken: string): void {
+function clearRefreshTokenStorage(): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, refreshToken);
-  } catch {
-    /* private mode / storage full */
-  }
-}
-
-/** Migrate refresh token from sessionStorage (older builds) into localStorage. */
-function migrateRefreshTokenStorage(): void {
-  if (typeof window === "undefined") return;
-  try {
-    if (localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY)) return;
-    const legacy = sessionStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
-    if (legacy) {
-      localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, legacy);
-      sessionStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
-    }
+    localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+    sessionStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
   } catch {
     /* private mode */
   }
 }
 
+/** @deprecated Refresh lives in httpOnly cookie only — never JS storage. */
+function migrateRefreshTokenStorage(): void {
+  clearRefreshTokenStorage();
+}
+
 /** If middleware cookie exists but localStorage was cleared, restore it for API calls. */
 export function hydrateAuthStorageFromCookie(): void {
   if (typeof window === "undefined") return;
-  migrateRefreshTokenStorage();
+  clearRefreshTokenStorage();
   const fromCookie = readAccessTokenFromCookie();
   if (!fromCookie) return;
   try {
@@ -139,26 +125,14 @@ export function setAuthTokens(tokens: AuthTokenPair): void {
   }
 
   writeAccessCookie(tokens.accessToken, cookieMaxAge);
-
-  if (tokens.refreshToken) {
-    writeRefreshTokenToStorage(tokens.refreshToken);
-    try {
-      sessionStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
-    } catch {
-      /* ignore */
-    }
-  }
+  // Refresh token is httpOnly-only — never persist in JS storage (XSS).
+  clearRefreshTokenStorage();
 }
 
 export function clearAuthTokens(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
-  try {
-    sessionStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
-  } catch {
-    /* ignore */
-  }
+  clearRefreshTokenStorage();
   const secure =
     typeof window !== "undefined" && window.location.protocol === "https:"
       ? "; Secure"
@@ -184,9 +158,10 @@ export function getAccessTokenIfValid(): string | null {
   return token;
 }
 
+/** Refresh is httpOnly cookie only — always null from JS. */
 export function getRefreshToken(): string | null {
-  migrateRefreshTokenStorage();
-  return readRefreshTokenFromStorage();
+  clearRefreshTokenStorage();
+  return null;
 }
 
 /** Milliseconds until proactive refresh should run (1 min before expiry). */

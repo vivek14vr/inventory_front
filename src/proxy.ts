@@ -115,12 +115,10 @@ export async function proxy(request: NextRequest) {
   }
 
   if (pathname.startsWith("/admin") || pathname.startsWith("/app")) {
+    // Never serve /admin or /app HTML without a role we can check. If the access
+    // cookie is missing/unreadable but refresh remains, bounce through login so
+    // AuthContext can rotate tokens — do not skip role guards via next().
     if (!token) {
-      // Access cookie may be gone while httpOnly refresh cookie remains — let the
-      // client load and rotate tokens instead of forcing login.
-      if (hasRefreshCookie) {
-        return NextResponse.next();
-      }
       const loginUrl = new URL(AUTH_ROUTES.login, request.url);
       loginUrl.searchParams.set("redirect", pathname);
       return NextResponse.redirect(loginUrl);
@@ -131,11 +129,8 @@ export async function proxy(request: NextRequest) {
     const payload = valid?.role ? valid : expired;
 
     if (!payload?.role) {
-      if (hasRefreshCookie) {
-        return NextResponse.next();
-      }
-
       const loginUrl = new URL(AUTH_ROUTES.login, request.url);
+      loginUrl.searchParams.set("redirect", pathname);
       if (!process.env.JWT_SECRET) {
         loginUrl.searchParams.set("error", "config");
       }

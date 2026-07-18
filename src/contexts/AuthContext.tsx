@@ -10,13 +10,12 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import { api, ApiError } from "@/lib/api/client";
-import { refreshAccessToken } from "@/lib/api/authSession";
+import { refreshSession } from "@/lib/api/authSession";
 import { AUTH_ROUTES } from "@/lib/auth/constants";
 import {
   clearAuthTokens,
   getAccessTokenIfValid,
   getDashboardPath,
-  getRefreshToken,
   hydrateAuthStorageFromCookie,
   msUntilAccessTokenRefresh,
   setAuthTokens,
@@ -57,7 +56,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     let token = getAccessTokenIfValid();
     if (!token) {
-      token = await refreshAccessToken();
+      const session = await refreshSession();
+      if (session) {
+        setUser(session.user);
+        token = session.accessToken;
+      }
     }
     if (!token) {
       setUser(null);
@@ -71,10 +74,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return me;
     } catch (err) {
       if (err instanceof ApiError && err.statusCode === 401) {
-        const refreshed = await refreshAccessToken();
-        if (refreshed) {
+        const session = await refreshSession();
+        if (session) {
           try {
-            const me = await api.auth.me(refreshed);
+            const me = await api.auth.me(session.accessToken);
             setUser(me);
             syncAccessTokenCookie();
             return me;
@@ -93,6 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return null;
   }, []);
 
+  // Keep access token + AuthContext.user permissions in sync.
   useEffect(() => {
     if (!user) return;
 
@@ -102,22 +106,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const schedule = (delayMs?: number) => {
       if (cancelled) return;
       const token = getAccessToken();
-      if (!token && !getRefreshToken()) return;
+      // Refresh uses httpOnly cookie; only schedule while we still have an access token.
+      if (!token) return;
 
       const delay =
         delayMs ??
-        (token ? msUntilAccessTokenRefresh(token) : 30_000);
+        (msUntilAccessTokenRefresh(token) ?? 30_000);
       if (delay == null) return;
 
       timer = window.setTimeout(async () => {
         if (cancelled) return;
-        const refreshed = await refreshAccessToken();
-        if (refreshed) {
+        const session = await refreshSession();
+        if (session) {
+          setUser(session.user);
           syncAccessTokenCookie();
           schedule();
           return;
         }
-        if (!getRefreshToken() && !getAccessTokenIfValid()) {
+        if (!getAccessTokenIfValid()) {
           setUser(null);
           window.location.href = AUTH_ROUTES.login;
           return;
@@ -132,13 +138,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
       if (timer != null) window.clearTimeout(timer);
     };
-  }, [user]);
+  }, [user?.id]);
+
+  // Refresh permissions when the tab becomes visible again.
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState !== "visible") return;
+      if (!getAccessToken()) return;
+      void refreshUser();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refreshUser]);
 
   useEffect(() => {
     let cancelled = false;
 
     if (pathname === AUTH_ROUTES.login) {
-      const hasLocalAuth = Boolean(getRefreshToken() || getAccessToken());
+      const hasLocalAuth = Boolean(getAccessToken());
       const hasRedirect = Boolean(safeRedirectPath());
       // No local tokens and not bounced from a protected page — stay on login.
       // If `redirect` is set, still try refresh via httpOnly cookie.
@@ -162,18 +179,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
     }
 
-    if (user && getAccessTokenIfValid()) {
-      setLoading(false);
-      return;
-    }
-
+    // Always re-fetch /auth/me on navigation so permission changes apply
+    // without waiting for the access-token TTL.
     void refreshUser().finally(() => {
       if (!cancelled) setLoading(false);
     });
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap on route change only
   }, [pathname, refreshUser]);
 
   const login = useCallback(async (email: string, password: string) => {

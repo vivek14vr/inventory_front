@@ -221,12 +221,20 @@ export function DashboardShell({
           )}
         </header>
 
-        <main className="px-4 py-5 pb-24 sm:px-6 sm:py-7 lg:px-8 lg:py-8 lg:pb-8">
+        <main className="px-4 pt-5 pb-36 sm:px-6 sm:pt-7 sm:pb-40 lg:px-8 lg:py-8 lg:pb-8">
           <div className="w-full">{children}</div>
+          {/* Extra clearance so last actions aren’t covered by the fixed bottom nav */}
+          <div
+            className="pointer-events-none h-8 w-full shrink-0 lg:hidden"
+            aria-hidden
+          />
         </main>
 
-        {/* Mobile bottom nav — large touch targets like PetPooja */}
-        <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-orange-100 bg-white px-2 py-2 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] lg:hidden">
+        {/* Mobile / tablet bottom nav — large touch targets like PetPooja */}
+        <nav
+          className="fixed inset-x-0 bottom-0 z-30 border-t border-orange-100 bg-white px-2 pt-2 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] lg:hidden"
+          style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+        >
           <div className="flex justify-around gap-1">
             {mobilePrimaryItems.map((item) => {
               const active = isActive(item.href);
@@ -234,7 +242,7 @@ export function DashboardShell({
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl px-1 py-2 transition ${
+                  className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl px-1 py-2.5 transition ${
                     active
                       ? "bg-orange-100 text-orange-700"
                       : "text-stone-500"
@@ -252,7 +260,7 @@ export function DashboardShell({
             <button
               type="button"
               onClick={() => setMobileOpen(true)}
-              className="flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl px-1 py-2 text-stone-500"
+              className="flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl px-1 py-2.5 text-stone-500"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-[18px] w-[18px]">
                 <path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16" />
