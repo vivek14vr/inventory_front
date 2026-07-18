@@ -477,7 +477,7 @@ export const api = {
       quantity?: number;
       notes?: string;
     }) =>
-      apiClient<import("@/types/stock").ClientReturnUpdateQuantityResult>(
+      apiClient<import("@/types/stock").ClientReturnSubmitResult>(
         "/stock/client-returns",
         {
           method: "POST",
@@ -599,6 +599,28 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+    movementInvoiceUpdates: (movementId: string) =>
+      apiClient<{
+        movementId: string;
+        modificationCount: number;
+        items: Array<{
+          id: string;
+          createdAt: string;
+          user?: { id: string; name: string; email: string };
+          previousQuantity?: number;
+          quantity?: number;
+          inventoryDelta?: number;
+          previousInvoiceNumber?: string;
+          invoiceNumber?: string;
+          previousClientName?: string;
+          clientName?: string;
+          productName?: string;
+          warehouseName?: string;
+          warehouseCode?: string;
+          updatedLineCount?: number;
+          summary: string;
+        }>;
+      }>(`/inventory/movements/${movementId}/updates`),
     deleteInvoice: (movementId: string) =>
       apiClient<{ deleted: boolean; id: string }>(
         `/inventory/movements/${movementId}/invoice`,
@@ -664,6 +686,7 @@ export const api = {
         stock: "/reports/stock",
         "stock-in": "/reports/stock-in",
         "stock-out": "/reports/stock-out",
+        returns: "/reports/returns",
         transfers: "/reports/transfers",
         "sales-client": "/reports/sales/by-client",
         "sales-invoice": "/reports/sales/by-invoice",
@@ -685,6 +708,7 @@ export const api = {
         stock: "/reports/stock",
         "stock-in": "/reports/stock-in",
         "stock-out": "/reports/stock-out",
+        returns: "/reports/returns",
         transfers: "/reports/transfers",
         "sales-client": "/reports/sales/by-client",
         "sales-invoice": "/reports/sales/by-invoice",

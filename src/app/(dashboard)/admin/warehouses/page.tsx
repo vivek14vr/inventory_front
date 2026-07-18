@@ -107,7 +107,6 @@ export default function AdminWarehousesPage() {
             value={form.code}
             onChange={(v) => setForm({ ...form, code: v.toUpperCase() })}
             placeholder="e.g. VASAI"
-            disabled={!!form.editId}
           />
         </div>
       }

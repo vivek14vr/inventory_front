@@ -11,7 +11,7 @@ import { usePagination } from "@/hooks/usePagination";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { productDisplayName } from "@/lib/products/productDisplayName";
 import { formatBaseQuantityWithStockUnit } from "@/lib/products/productUnits";
-import { validateNonNegativeInteger } from "@/lib/validation/quantity";
+import { validatePositiveInteger } from "@/lib/validation/quantity";
 import { api, ApiError } from "@/lib/api/client";
 import type {
   ClientReturnInvoice,
@@ -45,7 +45,9 @@ export function ClientReturnPanel({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [invoiceDetails, setInvoiceDetails] = useState<Record<string, ClientReturnInvoice>>({});
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
-  const [soldQtyDrafts, setSoldQtyDrafts] = useState<Record<string, Record<string, string>>>({});
+  const [returnQtyDrafts, setReturnQtyDrafts] = useState<
+    Record<string, Record<string, string>>
+  >({});
   const [notesByInvoice, setNotesByInvoice] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -97,10 +99,10 @@ export function ClientReturnPanel({
         warehouseId: summary.warehouse.id,
       });
       setInvoiceDetails((prev) => ({ ...prev, [summary.id]: result }));
-      setSoldQtyDrafts((prev) => ({
+      setReturnQtyDrafts((prev) => ({
         ...prev,
         [summary.id]: Object.fromEntries(
-          result.lines.map((line) => [line.saleMovementId, String(line.soldQuantity)])
+          result.lines.map((line) => [line.saleMovementId, ""])
         ),
       }));
     } catch (err) {
@@ -160,10 +162,10 @@ export function ClientReturnPanel({
       setInvoices(listResult.items);
       setPagination(listResult.pagination);
       setInvoiceDetails((prev) => ({ ...prev, [invoiceId]: detail }));
-      setSoldQtyDrafts((prev) => ({
+      setReturnQtyDrafts((prev) => ({
         ...prev,
         [invoiceId]: Object.fromEntries(
-          detail.lines.map((line) => [line.saleMovementId, String(line.soldQuantity)])
+          detail.lines.map((line) => [line.saleMovementId, ""])
         ),
       }));
     } catch {
@@ -172,26 +174,22 @@ export function ClientReturnPanel({
     }
   }
 
-  async function handleUpdateSoldQty(
+  async function handleReturnItems(
     invoice: ClientReturnInvoice,
     invoiceId: string,
     line: ClientReturnInvoiceLine
   ) {
-    const raw = soldQtyDrafts[invoiceId]?.[line.saleMovementId] ?? "";
+    const raw = returnQtyDrafts[invoiceId]?.[line.saleMovementId] ?? "";
     const qty = Number.parseInt(raw, 10);
-    const qtyError = validateNonNegativeInteger(qty);
+    const qtyError = validatePositiveInteger(qty, "Return quantity");
     if (!Number.isFinite(qty) || qtyError) {
-      setError(qtyError ?? "Enter a valid sold quantity (0 or more)");
+      setError(qtyError ?? "Enter how many items are being returned");
       return;
     }
-    if (qty < line.returnedQuantity) {
+    if (qty > line.returnableQuantity) {
       setError(
-        `Sold quantity cannot be less than already returned (${line.returnedQuantity})`
+        `Cannot return more than ${line.returnableQuantity} remaining on this line`
       );
-      return;
-    }
-    if (qty === line.soldQuantity) {
-      setError("No change to sold quantity");
       return;
     }
 
@@ -200,11 +198,16 @@ export function ClientReturnPanel({
     setSuccess("");
     try {
       const result = await api.stock.submitClientReturn({
-        mode: "update_quantity",
+        mode: "line",
         saleMovementId: line.saleMovementId,
         quantity: qty,
         notes: notesByInvoice[invoiceId]?.trim() || undefined,
       });
+
+      if (result.mode !== "line") {
+        setError("Server did not confirm the return");
+        return;
+      }
 
       const productName = productDisplayName(line);
       const unitFields = {
@@ -213,19 +216,12 @@ export function ClientReturnPanel({
         baseUnit: line.baseUnit,
       };
 
-      if (result.inventoryDelta === undefined) {
-        setError("Server did not confirm the inventory change");
-        return;
-      }
-
-      const message =
-        result.inventoryDelta > 0
-          ? `Added ${formatBaseQuantityWithStockUnit(result.inventoryDelta, unitFields)} of ${productName} back to ${invoice.warehouse.name} inventory (invoice ${invoice.invoiceNumber}). Verified stock: ${formatBaseQuantityWithStockUnit(result.balanceAfter, unitFields)} (was ${formatBaseQuantityWithStockUnit(result.balanceBefore, unitFields)})`
-          : `Removed ${formatBaseQuantityWithStockUnit(Math.abs(result.inventoryDelta), unitFields)} of ${productName} from ${invoice.warehouse.name} inventory (invoice ${invoice.invoiceNumber}). Verified stock: ${formatBaseQuantityWithStockUnit(result.balanceAfter, unitFields)} (was ${formatBaseQuantityWithStockUnit(result.balanceBefore, unitFields)})`;
-      setSuccess(message);
+      setSuccess(
+        `Returned ${formatBaseQuantityWithStockUnit(result.quantity, unitFields)} of ${productName} to ${invoice.warehouse.name} (invoice ${invoice.invoiceNumber}). Stock is now ${formatBaseQuantityWithStockUnit(result.balance, unitFields)}.`
+      );
       await refreshAfterChange(invoiceId);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to update sold quantity");
+      setError(err instanceof ApiError ? err.message : "Failed to process return");
     } finally {
       setSubmitting(null);
     }
@@ -239,8 +235,8 @@ export function ClientReturnPanel({
         <div>
           <h2 className="text-lg font-bold text-stone-900">Client return by invoice</h2>
           <p className="mt-1 text-sm text-stone-600">
-            Invoices are listed below with client, sell date, and warehouse. Open an
-            invoice to update the sold quantity for each product (can be set to zero).
+            Search below with client, sell date, and warehouse. Open an invoice and enter
+            how many pieces of each product are being returned to the warehouse.
           </p>
         </div>
 
@@ -338,7 +334,7 @@ export function ClientReturnPanel({
                               }))
                             }
                             className="form-input mt-2"
-                            placeholder="Reason for change, etc."
+                            placeholder="Reason for return, etc."
                           />
                         </div>
 
@@ -348,15 +344,15 @@ export function ClientReturnPanel({
                               <tr className="border-b border-stone-200 bg-stone-50 text-xs font-bold uppercase text-stone-600">
                                 <th className="px-4 py-3">Product</th>
                                 <th className="px-4 py-3">Current sold</th>
-                                <th className="px-4 py-3">Update sold qty</th>
+                                <th className="px-4 py-3">Returned items</th>
                                 <th className="px-4 py-3" />
                               </tr>
                             </thead>
                             <tbody>
                               {invoice.lines.map((line) => {
-                                const soldQty =
-                                  soldQtyDrafts[item.id]?.[line.saleMovementId] ??
-                                  String(line.soldQuantity);
+                                const returnQty =
+                                  returnQtyDrafts[item.id]?.[line.saleMovementId] ?? "";
+                                const canReturn = line.returnableQuantity > 0;
                                 return (
                                   <tr
                                     key={line.saleMovementId}
@@ -376,14 +372,29 @@ export function ClientReturnPanel({
                                         baseUnit={line.baseUnit}
                                         size="sm"
                                       />
+                                      {line.returnedQuantity > 0 ? (
+                                        <p className="mt-1 text-xs text-stone-500">
+                                          Already returned:{" "}
+                                          {formatBaseQuantityWithStockUnit(
+                                            line.returnedQuantity,
+                                            {
+                                              stockUnit: line.stockUnit,
+                                              unitsPerStockUnit: line.unitsPerStockUnit,
+                                              baseUnit: line.baseUnit,
+                                            }
+                                          )}
+                                        </p>
+                                      ) : null}
                                     </td>
                                     <td className="px-4 py-3">
                                       <input
                                         type="number"
-                                        min={0}
-                                        value={soldQty}
+                                        min={1}
+                                        max={line.returnableQuantity}
+                                        value={returnQty}
+                                        disabled={!canReturn || submitting !== null}
                                         onChange={(e) =>
-                                          setSoldQtyDrafts((prev) => ({
+                                          setReturnQtyDrafts((prev) => ({
                                             ...prev,
                                             [item.id]: {
                                               ...prev[item.id],
@@ -392,16 +403,22 @@ export function ClientReturnPanel({
                                           }))
                                         }
                                         className="form-input w-28"
+                                        placeholder="0"
                                       />
+                                      {!canReturn ? (
+                                        <p className="mt-1 text-xs text-stone-500">
+                                          Nothing left to return
+                                        </p>
+                                      ) : null}
                                     </td>
                                     <td className="px-4 py-3">
                                       <Button
                                         type="button"
                                         size="sm"
                                         loading={submitting === line.saleMovementId}
-                                        disabled={submitting !== null}
+                                        disabled={!canReturn || submitting !== null}
                                         onClick={() =>
-                                          void handleUpdateSoldQty(invoice, item.id, line)
+                                          void handleReturnItems(invoice, item.id, line)
                                         }
                                       >
                                         Update

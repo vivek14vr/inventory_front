@@ -2,6 +2,7 @@ export type ReportType =
   | "stock"
   | "stock-in"
   | "stock-out"
+  | "returns"
   | "transfers"
   | "sales-client"
   | "sales-invoice"
@@ -45,6 +46,14 @@ export type SalesByClientRow = {
   invoices?: SalesByClientInvoice[];
 };
 
+export type SalesByBrandProductSale = {
+  date: string;
+  clientName: string;
+  invoiceNumber: string;
+  warehouse: string;
+  quantity: number;
+};
+
 export type SalesByBrandProduct = {
   product: string;
   quantity: number;
@@ -52,6 +61,7 @@ export type SalesByBrandProduct = {
   stockUnit?: string;
   unitsPerStockUnit?: number;
   baseUnit?: string;
+  sales?: SalesByBrandProductSale[];
 };
 
 export type ReportResult = {

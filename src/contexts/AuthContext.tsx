@@ -99,11 +99,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     let timer: number | undefined;
 
-    const schedule = () => {
+    const schedule = (delayMs?: number) => {
       if (cancelled) return;
       const token = getAccessToken();
-      if (!token) return;
-      const delay = msUntilAccessTokenRefresh(token);
+      if (!token && !getRefreshToken()) return;
+
+      const delay =
+        delayMs ??
+        (token ? msUntilAccessTokenRefresh(token) : 30_000);
       if (delay == null) return;
 
       timer = window.setTimeout(async () => {
@@ -111,8 +114,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const refreshed = await refreshAccessToken();
         if (refreshed) {
           syncAccessTokenCookie();
+          schedule();
+          return;
         }
-        schedule();
+        if (!getRefreshToken() && !getAccessTokenIfValid()) {
+          setUser(null);
+          window.location.href = AUTH_ROUTES.login;
+          return;
+        }
+        // Transient refresh failure — back off instead of a tight retry loop.
+        schedule(30_000);
       }, delay);
     };
 
@@ -127,7 +138,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     if (pathname === AUTH_ROUTES.login) {
-      if (!getRefreshToken() && !getAccessToken()) {
+      const hasLocalAuth = Boolean(getRefreshToken() || getAccessToken());
+      const hasRedirect = Boolean(safeRedirectPath());
+      // No local tokens and not bounced from a protected page — stay on login.
+      // If `redirect` is set, still try refresh via httpOnly cookie.
+      if (!hasLocalAuth && !hasRedirect) {
         setLoading(false);
         return;
       }

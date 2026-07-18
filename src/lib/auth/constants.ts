@@ -3,7 +3,12 @@ export const ACCESS_TOKEN_COOKIE = "inventory_access";
 export const ACCESS_TOKEN_STORAGE_KEY = "inventory_access";
 
 /** Rotating refresh token (localStorage + httpOnly cookie when same-site) */
+export const REFRESH_TOKEN_COOKIE = "inventory_refresh";
 export const REFRESH_TOKEN_STORAGE_KEY = "inventory_refresh";
+
+/** Cookie lifetime for the access JWT cookie — must outlive JWT so middleware can
+ *  still see an expired token and let the client refresh (default matches refresh TTL). */
+export const ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
 /** @deprecated Use ACCESS_TOKEN_COOKIE */
 export const TOKEN_COOKIE = ACCESS_TOKEN_COOKIE;

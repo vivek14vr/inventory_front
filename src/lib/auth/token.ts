@@ -1,5 +1,6 @@
 import {
   ACCESS_TOKEN_COOKIE,
+  ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS,
   ACCESS_TOKEN_STORAGE_KEY,
   REFRESH_TOKEN_STORAGE_KEY,
 } from "./constants";
@@ -58,10 +59,15 @@ function readAccessTokenFromCookie(): string | null {
   }
 }
 
-function accessCookieMaxAge(token: string, fallbackSeconds = 15 * 60): number {
-  const exp = decodeJwtExp(token);
-  if (!exp) return fallbackSeconds;
-  return Math.max(exp - Math.floor(Date.now() / 1000), 60);
+/**
+ * Access cookie must outlive the JWT. Middleware keeps an expired JWT so the
+ * client can refresh; if the cookie dies with the JWT, users get bounced to login.
+ */
+function accessCookieMaxAge(preferredSeconds?: number): number {
+  if (preferredSeconds && preferredSeconds > 0) {
+    return Math.max(preferredSeconds, 60);
+  }
+  return ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS;
 }
 
 function readRefreshTokenFromStorage(): string | null {
@@ -116,14 +122,15 @@ export function hydrateAuthStorageFromCookie(): void {
 export function syncAccessTokenCookie(): void {
   if (typeof window === "undefined") return;
   const token = getAccessToken();
-  if (!token || isAccessTokenExpired(token, 0)) return;
-  writeAccessCookie(token, accessCookieMaxAge(token));
+  if (!token) return;
+  // Keep cookie even when JWT is expired so middleware can allow a client refresh.
+  writeAccessCookie(token, accessCookieMaxAge());
 }
 
 export function setAuthTokens(tokens: AuthTokenPair): void {
   if (typeof window === "undefined") return;
 
-  const accessMaxAge = tokens.accessTokenExpiresIn ?? accessCookieMaxAge(tokens.accessToken);
+  const cookieMaxAge = accessCookieMaxAge(tokens.refreshTokenExpiresIn);
 
   try {
     localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, tokens.accessToken);
@@ -131,7 +138,7 @@ export function setAuthTokens(tokens: AuthTokenPair): void {
     /* private mode / storage full */
   }
 
-  writeAccessCookie(tokens.accessToken, accessMaxAge);
+  writeAccessCookie(tokens.accessToken, cookieMaxAge);
 
   if (tokens.refreshToken) {
     writeRefreshTokenToStorage(tokens.refreshToken);

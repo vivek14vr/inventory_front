@@ -19,7 +19,9 @@ export type StockMovement = {
   clientName?: string;
   invoiceNumber?: string;
   notes?: string;
+  relatedSaleMovementId?: string;
   invoiceModificationCount?: number;
+  remainingStock?: number;
   product?: {
     id: string;
     name: string;
@@ -148,3 +150,24 @@ export type ClientReturnUpdateQuantityResult = {
   warehouseId: string;
   productId: string;
 };
+
+export type ClientReturnLineResult = {
+  mode: "line";
+  saleMovementId: string;
+  quantity: number;
+  movementId: string;
+  balance: number;
+};
+
+export type ClientReturnSubmitResult =
+  | ClientReturnUpdateQuantityResult
+  | ClientReturnLineResult
+  | {
+      mode: "full";
+      lines: Array<{
+        saleMovementId: string;
+        quantity: number;
+        movementId: string;
+        balance: number;
+      }>;
+    };

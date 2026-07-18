@@ -51,6 +51,11 @@ import {
   printMovementsReport,
   type CheckStockPdfFilters,
 } from "@/lib/reports/checkStockPdf";
+import {
+  movementDetails,
+  movementTypeBadgeClass,
+  movementTypeLabel,
+} from "@/lib/inventory/movementDisplay";
 import type {
   LowStockProductRow,
   LowStockResponse,
@@ -703,6 +708,9 @@ function StockView({
                 <th className="sticky left-0 z-10 bg-orange-50 px-4 py-3.5 text-left align-bottom">
                   Product detail
                 </th>
+                {showTotalColumn ? (
+                  <th className="px-4 py-3.5 text-left align-bottom">Total</th>
+                ) : null}
                 {warehouseColumns.map((wh) => (
                   <Fragment key={wh.warehouseId}>
                     <th className="px-4 py-3.5 text-left align-bottom">
@@ -716,9 +724,6 @@ function StockView({
                     </th>
                   </Fragment>
                 ))}
-                {showTotalColumn ? (
-                  <th className="px-4 py-3.5 text-left align-bottom">Total</th>
-                ) : null}
                 <th className="sticky right-0 z-10 whitespace-nowrap bg-orange-50 px-4 py-3.5 text-right align-bottom">
                   Actions
                 </th>
@@ -754,6 +759,19 @@ function StockView({
                           linkWarehouseId={detailLinkLocation?.warehouseId}
                         />
                       </td>
+                      {showTotalColumn ? (
+                        <td className="px-4 py-3.5 text-left">
+                          <StockQuantityDisplay
+                            quantity={product.totalQuantity}
+                            stockUnit={product.stockUnit}
+                            unitsPerStockUnit={product.unitsPerStockUnit}
+                            baseUnit={product.baseUnit}
+                            size="md"
+                            align="left"
+                            className="text-orange-800 [&_span:first-child]:!text-orange-800"
+                          />
+                        </td>
+                      ) : null}
                       {warehouseColumns.map((wh) => {
                         const loc = locationByWarehouse.get(wh.warehouseId);
                         return (
@@ -784,19 +802,6 @@ function StockView({
                           </Fragment>
                         );
                       })}
-                      {showTotalColumn ? (
-                        <td className="px-4 py-3.5 text-left">
-                          <StockQuantityDisplay
-                            quantity={product.totalQuantity}
-                            stockUnit={product.stockUnit}
-                            unitsPerStockUnit={product.unitsPerStockUnit}
-                            baseUnit={product.baseUnit}
-                            size="md"
-                            align="left"
-                            className="text-orange-800 [&_span:first-child]:!text-orange-800"
-                          />
-                        </td>
-                      ) : null}
                       <td className="sticky right-0 z-10 w-px bg-inherit px-4 py-3.5 align-top">
                         <div className="flex flex-col items-stretch gap-2">
                           <ButtonLink
@@ -1325,8 +1330,7 @@ function MovementsView({ movements }: { movements: StockMovement[] }) {
         <DataTableHead>
           <DataTableTh>Date</DataTableTh>
           <DataTableTh>Type</DataTableTh>
-          <DataTableTh>Primary name</DataTableTh>
-          <DataTableTh>Secondary name</DataTableTh>
+          <DataTableTh>Product</DataTableTh>
           <DataTableTh>Brand</DataTableTh>
           <DataTableTh>Warehouse</DataTableTh>
           <DataTableTh>Details</DataTableTh>
@@ -1343,6 +1347,7 @@ function MovementsView({ movements }: { movements: StockMovement[] }) {
               ) : null}
             </div>
           </DataTableTh>
+          <DataTableTh align="right">Remaining stock</DataTableTh>
         </DataTableHead>
         <DataTableBody>
           {movements.length === 0 ? (
@@ -1352,55 +1357,71 @@ function MovementsView({ movements }: { movements: StockMovement[] }) {
               </td>
             </tr>
           ) : (
-            movements.map((m) => (
-              <DataTableRow key={m.id}>
-                <DataTableTd className="whitespace-nowrap text-zinc-500">
-                  {new Date(m.createdAt).toLocaleString("en-IN", {
-                    dateStyle: "short",
-                    timeStyle: "short",
-                  })}
-                </DataTableTd>
-                <DataTableTd>
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                      m.type === "STOCK_IN"
-                        ? "bg-orange-100 text-orange-800"
-                        : "bg-amber-100 text-amber-800"
-                    }`}
-                  >
-                    {m.type === "STOCK_IN" ? "Stock In" : "Stock Out"}
-                  </span>
-                </DataTableTd>
-                <DataTableTd className="font-medium">{m.product?.name}</DataTableTd>
-                <DataTableTd className="text-zinc-600">
-                  {formatSecondaryName(m.product?.secondaryName)}
-                </DataTableTd>
-                <DataTableTd className="text-zinc-600">{m.brand?.name}</DataTableTd>
-                <DataTableTd>{m.warehouse?.code}</DataTableTd>
-                <DataTableTd className="max-w-xs truncate text-xs text-zinc-500">
-                  {m.dispatchType === "TRANSFER" &&
-                    `Transfer → ${m.destinationWarehouse?.code}`}
-                  {m.dispatchType === "DIRECT_SELLING" &&
-                    `${m.clientName} · ${m.invoiceNumber}`}
-                </DataTableTd>
-                <DataTableTd align="right" className="font-semibold tabular-nums">
-                  {quantityMode === "units" || !usesStockUnit(m.product) ? (
-                    <span className="whitespace-nowrap text-stone-900">
-                      {formatBaseUnits(m.quantity, m.product)}
+            movements.map((m) => {
+              const secondary = formatSecondaryName(m.product?.secondaryName);
+              return (
+                <DataTableRow key={m.id}>
+                  <DataTableTd className="whitespace-nowrap text-zinc-500">
+                    {new Date(m.createdAt).toLocaleString("en-IN", {
+                      dateStyle: "short",
+                      timeStyle: "short",
+                    })}
+                  </DataTableTd>
+                  <DataTableTd>
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${movementTypeBadgeClass(m)}`}
+                    >
+                      {movementTypeLabel(m)}
                     </span>
-                  ) : (
-                    <StockQuantityDisplay
-                      quantity={m.quantity}
-                      stockUnit={m.product?.stockUnit}
-                      unitsPerStockUnit={m.product?.unitsPerStockUnit}
-                      baseUnit={m.product?.baseUnit}
-                      size="sm"
-                      align="right"
-                    />
-                  )}
-                </DataTableTd>
-              </DataTableRow>
-            ))
+                  </DataTableTd>
+                  <DataTableTd>
+                    <p className="font-medium text-stone-900">{m.product?.name ?? "—"}</p>
+                    {secondary !== "—" ? (
+                      <p className="mt-0.5 text-xs text-zinc-500">{secondary}</p>
+                    ) : null}
+                  </DataTableTd>
+                  <DataTableTd className="text-zinc-600">{m.brand?.name}</DataTableTd>
+                  <DataTableTd>{m.warehouse?.code}</DataTableTd>
+                  <DataTableTd className="max-w-xs truncate text-xs text-zinc-500">
+                    {movementDetails(m)}
+                  </DataTableTd>
+                  <DataTableTd align="right" className="font-semibold tabular-nums">
+                    {quantityMode === "units" || !usesStockUnit(m.product) ? (
+                      <span className="whitespace-nowrap text-stone-900">
+                        {formatBaseUnits(m.quantity, m.product)}
+                      </span>
+                    ) : (
+                      <StockQuantityDisplay
+                        quantity={m.quantity}
+                        stockUnit={m.product?.stockUnit}
+                        unitsPerStockUnit={m.product?.unitsPerStockUnit}
+                        baseUnit={m.product?.baseUnit}
+                        size="sm"
+                        align="right"
+                      />
+                    )}
+                  </DataTableTd>
+                  <DataTableTd align="right" className="tabular-nums text-stone-700">
+                    {m.remainingStock === undefined ? (
+                      <span className="text-stone-300">—</span>
+                    ) : quantityMode === "units" || !usesStockUnit(m.product) ? (
+                      <span className="whitespace-nowrap">
+                        {formatBaseUnits(m.remainingStock, m.product)}
+                      </span>
+                    ) : (
+                      <StockQuantityDisplay
+                        quantity={m.remainingStock}
+                        stockUnit={m.product?.stockUnit}
+                        unitsPerStockUnit={m.product?.unitsPerStockUnit}
+                        baseUnit={m.product?.baseUnit}
+                        size="sm"
+                        align="right"
+                      />
+                    )}
+                  </DataTableTd>
+                </DataTableRow>
+              );
+            })
           )}
         </DataTableBody>
       </DataTable>
@@ -1485,19 +1506,22 @@ function LowStockThresholdCell({
   return (
     <div className="flex flex-col items-start gap-0.5">
       {mode === "units" || !usesStockUnit(product) ? (
-        <span className="text-sm font-medium tabular-nums text-stone-600">
+        <span className="text-xs font-medium tabular-nums text-stone-500">
           ≤ {formatBaseUnits(threshold, unitFields)}
         </span>
       ) : (
-        <StockQuantityDisplay
-          quantity={threshold}
-          stockUnit={product.stockUnit}
-          unitsPerStockUnit={product.unitsPerStockUnit}
-          baseUnit={product.baseUnit}
-          size="sm"
-          align="left"
-          className="text-stone-600 [&_span:first-child]:!text-stone-600"
-        />
+        <div className="flex items-baseline gap-1 text-xs text-stone-500">
+          <span>≤</span>
+          <StockQuantityDisplay
+            quantity={threshold}
+            stockUnit={product.stockUnit}
+            unitsPerStockUnit={product.unitsPerStockUnit}
+            baseUnit={product.baseUnit}
+            size="sm"
+            align="left"
+            className="text-stone-500 [&_span:first-child]:!text-stone-500"
+          />
+        </div>
       )}
       {sourceLabel ? (
         <span className="text-[10px] text-stone-400">{sourceLabel}</span>
@@ -1591,20 +1615,14 @@ function LowStockView({
               <th className="sticky left-0 z-10 bg-orange-50 px-4 py-3.5 text-left align-bottom">
                 Product detail
               </th>
-              <th className="px-4 py-3.5 text-left align-bottom">Total low</th>
-              <th className="px-4 py-3.5 text-left align-bottom">Total threshold</th>
+              <th className="px-4 py-3.5 text-left align-bottom">Total stock</th>
               {warehouseColumns.map((wh) => (
-                <Fragment key={wh.warehouseId}>
-                  <th className="px-4 py-3.5 text-left align-bottom">
-                    <StackedHeader text={wh.name} className="font-bold" />
-                  </th>
-                  <th className="px-4 py-3.5 text-left align-bottom">
-                    <div className="whitespace-nowrap font-bold">Threshold</div>
-                    <div className="mt-0.5 whitespace-nowrap text-[10px] font-semibold normal-case tracking-normal text-orange-600/80">
-                      {wh.name}
-                    </div>
-                  </th>
-                </Fragment>
+                <th
+                  key={wh.warehouseId}
+                  className="px-4 py-3.5 text-left align-bottom"
+                >
+                  <StackedHeader text={wh.name} className="font-bold" />
+                </th>
               ))}
             </tr>
           </thead>
@@ -1612,7 +1630,7 @@ function LowStockView({
             {products.length === 0 ? (
               <tr>
                 <td
-                  colSpan={warehouseColumns.length * 2 + 3}
+                  colSpan={warehouseColumns.length + 2}
                   className="px-5 py-10 text-center text-base font-medium text-stone-400"
                 >
                   No low stock. Set thresholds on each product or per warehouse in item
@@ -1638,35 +1656,36 @@ function LowStockView({
                         linkWarehouseId={detailLinkWarehouseId}
                       />
                     </td>
-                    <td className="px-4 py-3.5 text-left">
-                      <LowStockQuantityCell
-                        quantity={product.totalQuantity}
-                        product={detailProduct}
-                        mode={quantityMode}
-                        variant={product.isTotalLow ? "total" : "neutral"}
-                        size="md"
-                      />
-                    </td>
-                    <td className="px-4 py-3.5 text-left">
-                      <LowStockThresholdCell
-                        threshold={product.totalLowStockThreshold}
-                        product={detailProduct}
-                        mode={quantityMode}
-                        source={
-                          product.totalLowStockThreshold != null ? "overall" : undefined
-                        }
-                      />
+                    <td className="px-4 py-3.5 text-left align-top">
+                      <div className="flex flex-col items-start gap-1">
+                        <LowStockQuantityCell
+                          quantity={product.totalQuantity}
+                          product={detailProduct}
+                          mode={quantityMode}
+                          variant={product.isTotalLow ? "total" : "neutral"}
+                          size="md"
+                        />
+                        <LowStockThresholdCell
+                          threshold={product.totalLowStockThreshold}
+                          product={detailProduct}
+                          mode={quantityMode}
+                          source={
+                            product.totalLowStockThreshold != null ? "overall" : undefined
+                          }
+                        />
+                      </div>
                     </td>
                     {warehouseColumns.map((wh) => (
-                      <Fragment key={wh.warehouseId}>
-                        <td className="px-4 py-3.5 text-left">
+                      <td
+                        key={wh.warehouseId}
+                        className="px-4 py-3.5 text-left align-top"
+                      >
+                        <div className="flex flex-col items-start gap-1">
                           <LowStockQuantityCell
                             quantity={product.warehouseLow[wh.warehouseId]}
                             product={detailProduct}
                             mode={quantityMode}
                           />
-                        </td>
-                        <td className="px-4 py-3.5 text-left">
                           <LowStockThresholdCell
                             threshold={product.warehouseThreshold[wh.warehouseId]}
                             product={detailProduct}
@@ -1679,8 +1698,8 @@ function LowStockView({
                                 : undefined
                             }
                           />
-                        </td>
-                      </Fragment>
+                        </div>
+                      </td>
                     ))}
                   </tr>
                 );

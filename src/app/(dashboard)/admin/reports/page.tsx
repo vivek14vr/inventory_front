@@ -12,7 +12,14 @@ import {
   usesStockUnit,
 } from "@/lib/products/productUnits";
 import type { Brand, Product, Warehouse } from "@/types/master";
-import type { ReportFilters, ReportResult, ReportType, SalesByBrandProduct, SalesByClientInvoice } from "@/types/reports";
+import type {
+  ReportFilters,
+  ReportResult,
+  ReportType,
+  SalesByBrandProduct,
+  SalesByBrandProductSale,
+  SalesByClientInvoice,
+} from "@/types/reports";
 
 const META_COLUMNS = new Set(["stockUnit", "unitsPerStockUnit", "baseUnit"]);
 const HIDDEN_COLUMNS = new Set([...META_COLUMNS, "invoices", "lines", "products"]);
@@ -22,6 +29,7 @@ const REPORT_OPTIONS: { value: ReportType; label: string }[] = [
   { value: "stock", label: "Current stock" },
   { value: "stock-in", label: "Stock In" },
   { value: "stock-out", label: "Stock Out" },
+  { value: "returns", label: "Returns" },
   { value: "transfers", label: "Inter-warehouse transfers" },
   { value: "sales-client", label: "Sales by client" },
   { value: "sales-invoice", label: "Sales by invoice" },
@@ -42,6 +50,16 @@ const COLUMN_MAP: Record<ReportType, string[]> = {
     "clientName",
     "invoiceNumber",
   ],
+  returns: [
+    "date",
+    "warehouse",
+    "product",
+    "brand",
+    "quantity",
+    "clientName",
+    "invoiceNumber",
+    "notes",
+  ],
   transfers: ["date", "from", "to", "product", "brand", "status", "quantity", "receivedAt"],
   "sales-client": ["clientName", "totalQuantity", "invoiceCount"],
   "sales-invoice": [
@@ -58,6 +76,7 @@ const COLUMN_MAP: Record<ReportType, string[]> = {
 const REPORT_TYPES_WITH_DEFAULT_DATES: ReportType[] = [
   "stock-in",
   "stock-out",
+  "returns",
   "transfers",
 ];
 
@@ -286,7 +305,8 @@ export default function AdminReportsPage() {
           />
           {(reportType === "stock" ||
             reportType === "stock-in" ||
-            reportType === "stock-out") && (
+            reportType === "stock-out" ||
+            reportType === "returns") && (
             <FilterSelect
               label="Product"
               value={filters.productId ?? ""}
@@ -315,7 +335,9 @@ export default function AdminReportsPage() {
               ]}
             />
           )}
-          {(reportType.startsWith("sales") || reportType === "stock-out") && (
+          {(reportType.startsWith("sales") ||
+            reportType === "stock-out" ||
+            reportType === "returns") && (
             <div>
               <label className="block text-xs font-medium text-zinc-500">Client</label>
               <input
@@ -328,7 +350,9 @@ export default function AdminReportsPage() {
               />
             </div>
           )}
-          {(reportType.startsWith("sales") || reportType === "stock-out") && (
+          {(reportType.startsWith("sales") ||
+            reportType === "stock-out" ||
+            reportType === "returns") && (
             <div>
               <label className="block text-xs font-medium text-zinc-500">Invoice</label>
               <input
@@ -432,7 +456,9 @@ export default function AdminReportsPage() {
                   <span className="text-stone-400">· one row per invoice · click to view products</span>
                 ) : null}
                 {isSalesByBrand && (result?.rows.length ?? 0) > 0 ? (
-                  <span className="text-stone-400">· click a brand to view products</span>
+                  <span className="text-stone-400">
+                    · click a brand to view products · click a product for sale details
+                  </span>
                 ) : null}
               </>
             )}
@@ -868,45 +894,188 @@ function SalesByBrandProductDetails({
   products: SalesByBrandProduct[];
   quantityMode: QuantityEntryMode;
 }) {
+  const [selectedProduct, setSelectedProduct] = useState<SalesByBrandProduct | null>(null);
+
   return (
-    <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
-      <div className="border-b border-stone-100 bg-stone-50/80 px-4 py-2.5">
-        <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">
-          Products ({products.length})
-        </p>
-        <p className="text-sm font-semibold text-stone-900">{brandName}</p>
-      </div>
-      <table className="w-full text-left text-sm">
-        <thead className="bg-white text-[10px] font-bold uppercase tracking-wide text-stone-400">
-          <tr>
-            <th className="px-4 py-2 text-left">Product</th>
-            <th className="px-4 py-2 text-right">Quantity</th>
-            <th className="px-4 py-2 text-right">Sales</th>
-          </tr>
-        </thead>
-        <tbody>
-          {products.map((product, index) => (
-            <tr
-              key={`${product.product}-${index}`}
-              className="border-t border-stone-100"
-            >
-              <td className="px-4 py-2 font-medium text-stone-800">{product.product}</td>
-              <td className="px-4 py-2 text-right">
-                <ReportQuantityValue
-                  quantity={product.quantity}
-                  product={product}
-                  quantityMode={quantityMode}
-                  align="right"
-                />
-              </td>
-              <td className="px-4 py-2 text-right font-bold tabular-nums text-stone-900">
-                {product.saleCount.toLocaleString()}
-              </td>
+    <>
+      <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+        <div className="border-b border-stone-100 bg-stone-50/80 px-4 py-2.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">
+            Products ({products.length})
+          </p>
+          <p className="text-sm font-semibold text-stone-900">{brandName}</p>
+        </div>
+        <table className="w-full text-left text-sm">
+          <thead className="bg-white text-[10px] font-bold uppercase tracking-wide text-stone-400">
+            <tr>
+              <th className="px-4 py-2 text-left">Product</th>
+              <th className="px-4 py-2 text-right">Quantity</th>
+              <th className="px-4 py-2 text-right">Sales</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {products.map((product, index) => (
+              <tr
+                key={`${product.product}-${index}`}
+                className="border-t border-stone-100"
+              >
+                <td className="px-4 py-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedProduct(product);
+                    }}
+                    className="text-left font-medium text-orange-800 underline-offset-2 transition hover:text-orange-950 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30"
+                  >
+                    {product.product}
+                  </button>
+                </td>
+                <td className="px-4 py-2 text-right">
+                  <ReportQuantityValue
+                    quantity={product.quantity}
+                    product={product}
+                    quantityMode={quantityMode}
+                    align="right"
+                  />
+                </td>
+                <td className="px-4 py-2 text-right font-bold tabular-nums text-stone-900">
+                  {product.saleCount.toLocaleString()}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {selectedProduct ? (
+        <BrandProductSalesDialog
+          brandName={brandName}
+          product={selectedProduct}
+          quantityMode={quantityMode}
+          onClose={() => setSelectedProduct(null)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function BrandProductSalesDialog({
+  brandName,
+  product,
+  quantityMode,
+  onClose,
+}: {
+  brandName: string;
+  product: SalesByBrandProduct;
+  quantityMode: QuantityEntryMode;
+  onClose: () => void;
+}) {
+  const sales = parseBrandProductSales(product.sales);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[2px]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="brand-product-sales-title"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[min(80vh,40rem)] w-full max-w-2xl flex-col rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-zinc-100 px-5 py-4">
+          <h2
+            id="brand-product-sales-title"
+            className="text-lg font-semibold text-zinc-900"
+          >
+            {product.product}
+          </h2>
+          <p className="mt-1 text-sm text-zinc-600">
+            {brandName} · {product.saleCount.toLocaleString()} sale
+            {product.saleCount === 1 ? "" : "s"} · total{" "}
+            <span className="inline-flex align-middle">
+              <ReportQuantityValue
+                quantity={product.quantity}
+                product={product}
+                quantityMode={quantityMode}
+                align="left"
+              />
+            </span>
+          </p>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {sales.length === 0 ? (
+            <p className="text-sm text-zinc-500">No sale details available for this product.</p>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-stone-200">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-stone-50 text-[10px] font-bold uppercase tracking-wide text-stone-500">
+                  <tr>
+                    <th className="px-3 py-2">Date</th>
+                    <th className="px-3 py-2">Client</th>
+                    <th className="px-3 py-2">Invoice</th>
+                    <th className="px-3 py-2">Warehouse</th>
+                    <th className="px-3 py-2 text-right">Quantity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sales.map((sale, index) => (
+                    <tr
+                      key={`${sale.invoiceNumber}-${sale.date}-${index}`}
+                      className="border-t border-stone-100"
+                    >
+                      <td className="px-3 py-2 whitespace-nowrap text-stone-600">
+                        {formatCell(sale.date)}
+                      </td>
+                      <td className="px-3 py-2 font-medium text-stone-900">
+                        {sale.clientName || "—"}
+                      </td>
+                      <td className="px-3 py-2 text-stone-700">
+                        {sale.invoiceNumber || "—"}
+                      </td>
+                      <td className="px-3 py-2 text-stone-600">
+                        {sale.warehouse || "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <ReportQuantityValue
+                          quantity={sale.quantity}
+                          product={product}
+                          quantityMode={quantityMode}
+                          align="right"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end border-t border-zinc-100 px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+          >
+            Close
+          </button>
+        </div>
+      </div>
     </div>
+  );
+}
+
+function parseBrandProductSales(value: unknown): SalesByBrandProductSale[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is SalesByBrandProductSale =>
+      typeof item === "object" &&
+      item != null &&
+      typeof (item as SalesByBrandProductSale).quantity === "number"
   );
 }
 

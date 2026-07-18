@@ -5,6 +5,10 @@ import {
   type QuantityEntryMode,
   usesStockUnit,
 } from "@/lib/products/productUnits";
+import {
+  movementDetails,
+  movementTypeLabel,
+} from "@/lib/inventory/movementDisplay";
 import { escapeHtml, openPrintWindow } from "@/lib/reports/printReport";
 import type {
   LowStockProductRow,
@@ -92,8 +96,13 @@ function th(label: string, align: "left" | "right" = "left"): string {
   return `<th style="text-align:${align};padding:8px;border:1px solid #e4e4e7;">${escapeHtml(label)}</th>`;
 }
 
-function td(value: string, align: "left" | "right" = "left"): string {
-  return `<td style="padding:8px;border:1px solid #e4e4e7;text-align:${align};">${escapeHtml(value)}</td>`;
+function td(
+  value: string,
+  align: "left" | "right" = "left",
+  options?: { html?: boolean }
+): string {
+  const content = options?.html ? value : escapeHtml(value);
+  return `<td style="padding:8px;border:1px solid #e4e4e7;text-align:${align};">${content}</td>`;
 }
 
 function wrapReport(title: string, filterLine: string, tableHtml: string, summary?: string): string {
@@ -200,21 +209,25 @@ function buildStockTable(
 
 function buildMovementsTable(movements: StockMovement[]): string {
   const rows = movements.map((m) => {
-    const details =
-      m.dispatchType === "TRANSFER"
-        ? `Transfer → ${m.destinationWarehouse?.code ?? ""}`
-        : m.dispatchType === "DIRECT_SELLING"
-          ? `${m.clientName ?? ""} · ${m.invoiceNumber ?? ""}`
-          : m.notes ?? "";
+    const secondary = formatSecondaryName(m.product?.secondaryName);
+    const productCell =
+      secondary !== "—"
+        ? `${escapeHtml(m.product?.name ?? "—")}<br/><span style="font-size:11px;color:#78716c;">${escapeHtml(secondary)}</span>`
+        : escapeHtml(m.product?.name ?? "—");
+    const remaining =
+      m.remainingStock === undefined
+        ? "—"
+        : quantityText(m.remainingStock, m.product);
+
     return `<tr>
       ${td(formatDateTime(m.createdAt))}
-      ${td(m.type === "STOCK_IN" ? "Stock In" : "Stock Out")}
-      ${td(m.product?.name ?? "—")}
-      ${td(formatSecondaryName(m.product?.secondaryName))}
+      ${td(movementTypeLabel(m))}
+      ${td(productCell, "left", { html: true })}
       ${td(m.brand?.name ?? "—")}
       ${td(m.warehouse?.code ?? "—")}
-      ${td(details)}
+      ${td(movementDetails(m))}
       ${td(quantityText(m.quantity, m.product), "right")}
+      ${td(remaining, "right")}
     </tr>`;
   });
 
@@ -222,12 +235,12 @@ function buildMovementsTable(movements: StockMovement[]): string {
     <thead><tr>
       ${th("Date")}
       ${th("Type")}
-      ${th("Primary name")}
-      ${th("Secondary name")}
+      ${th("Product")}
       ${th("Brand")}
       ${th("Warehouse")}
       ${th("Details")}
       ${th("Quantity", "right")}
+      ${th("Remaining stock", "right")}
     </tr></thead>
     <tbody>${rows.join("") || `<tr><td colspan="8" style="padding:12px;">No movements</td></tr>`}</tbody>
   </table>`;
@@ -275,47 +288,71 @@ function buildLowStockTable(
   const headerCells = [
     th("Product"),
     th("Brand"),
-    th("Total qty", "right"),
-    th("Total threshold", "right"),
-    ...warehouseColumns.flatMap((wh) => [
-      th(`${wh.name} qty`, "right"),
-      th(`${wh.name} threshold`, "right"),
-    ]),
+    th("Total stock", "right"),
+    ...warehouseColumns.map((wh) => th(wh.name, "right")),
   ];
+
+  const stockWithThreshold = (
+    quantity: number | undefined,
+    threshold: number | undefined,
+    unitProduct: {
+      stockUnit?: string;
+      unitsPerStockUnit?: number;
+      baseUnit?: string;
+    },
+    thresholdSuffix?: string
+  ) => {
+    const qty =
+      quantity != null ? quantityText(quantity, unitProduct, quantityMode) : "—";
+    if (threshold == null) return escapeHtml(qty);
+    const thresholdLabel = `≤ ${quantityText(threshold, unitProduct, quantityMode)}${
+      thresholdSuffix ? ` ${thresholdSuffix}` : ""
+    }`;
+    return `${escapeHtml(qty)}<br/><span style="font-size:11px;color:#78716c;">${escapeHtml(thresholdLabel)}</span>`;
+  };
 
   const rows = products.map((productRow) => {
     const product = normalizeLowStockRow(productRow);
     const warehouseLow = product.warehouseLow ?? {};
     const warehouseThreshold = product.warehouseThreshold ?? {};
+    const warehouseThresholdCustom = product.warehouseThresholdCustom ?? {};
     const unitProduct = {
       stockUnit: product.stockUnit,
       unitsPerStockUnit: product.unitsPerStockUnit,
       baseUnit: product.baseUnit,
     };
-    const warehouseCells = warehouseColumns.flatMap((wh) => [
-      td(
-        warehouseLow[wh.warehouseId] != null
-          ? quantityText(warehouseLow[wh.warehouseId]!, unitProduct, quantityMode)
-          : "—",
-        "right"
-      ),
-      td(
-        warehouseThreshold[wh.warehouseId] != null
-          ? quantityText(warehouseThreshold[wh.warehouseId]!, unitProduct, quantityMode)
-          : "—",
-        "right"
-      ),
-    ]);
+    const warehouseCells = warehouseColumns.map((wh) => {
+      const threshold = warehouseThreshold[wh.warehouseId];
+      const suffix =
+        threshold != null
+          ? warehouseThresholdCustom[wh.warehouseId]
+            ? "warehouse"
+            : "default"
+          : undefined;
+      return td(
+        stockWithThreshold(
+          warehouseLow[wh.warehouseId],
+          threshold,
+          unitProduct,
+          suffix
+        ),
+        "right",
+        { html: true }
+      );
+    });
 
     return `<tr>
       ${td(productLabel(product))}
       ${td(product.brandName)}
-      ${td(quantityText(product.totalQuantity, unitProduct, quantityMode), "right")}
       ${td(
-        product.totalLowStockThreshold != null
-          ? quantityText(product.totalLowStockThreshold, unitProduct, quantityMode)
-          : "—",
-        "right"
+        stockWithThreshold(
+          product.totalQuantity,
+          product.totalLowStockThreshold,
+          unitProduct,
+          product.totalLowStockThreshold != null ? "overall" : undefined
+        ),
+        "right",
+        { html: true }
       )}
       ${warehouseCells.join("")}
     </tr>`;
