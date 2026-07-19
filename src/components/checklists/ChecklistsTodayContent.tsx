@@ -15,23 +15,60 @@ type ChecklistsTodayContentProps = {
   notificationsHref: string;
 };
 
+function applyTaskCompletion(
+  lists: TodayChecklist[],
+  checklistId: string,
+  taskId: string,
+  completed: boolean
+): TodayChecklist[] {
+  return lists.map((checklist) => {
+    if (checklist.id !== checklistId) return checklist;
+    const tasks = checklist.tasks.map((task) => {
+      if (task.id !== taskId) return task;
+      return {
+        ...task,
+        completed,
+        completedAt: completed ? new Date().toISOString() : undefined,
+        isPastDue: completed ? false : task.isPastDue,
+      };
+    });
+    const completedCount = tasks.filter((t) => t.completed).length;
+    return {
+      ...checklist,
+      tasks,
+      completedCount,
+      isPastDue: tasks.some((t) => !t.completed && t.isPastDue),
+    };
+  });
+}
+
 export function ChecklistsTodayContent({ notificationsHref }: ChecklistsTodayContentProps) {
   const [checklists, setChecklists] = useState<TodayChecklist[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [busyTask, setBusyTask] = useState<string | null>(null);
   const { unreadCount } = useNotifications();
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
+    if (silent) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError("");
     try {
       setChecklists(await api.checklists.today());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load checklists");
-      setChecklists([]);
+      if (!silent) setChecklists([]);
     } finally {
-      setLoading(false);
+      if (silent) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -45,16 +82,22 @@ export function ChecklistsTodayContent({ notificationsHref }: ChecklistsTodayCon
     completed: boolean
   ) {
     const key = `${checklistId}:${taskId}`;
+    const nextCompleted = !completed;
+    const previous = checklists;
+
     setBusyTask(key);
     setError("");
+    setChecklists(applyTaskCompletion(previous, checklistId, taskId, nextCompleted));
+
     try {
       if (completed) {
         await api.checklists.uncomplete(checklistId, taskId);
       } else {
         await api.checklists.complete(checklistId, taskId);
       }
-      await load();
+      await load({ silent: true });
     } catch (err) {
+      setChecklists(previous);
       setError(err instanceof ApiError ? err.message : "Failed to update task");
     } finally {
       setBusyTask(null);
@@ -91,7 +134,7 @@ export function ChecklistsTodayContent({ notificationsHref }: ChecklistsTodayCon
               variant="secondary"
               size="lg"
               onClick={() => void load()}
-              loading={loading}
+              loading={loading || refreshing}
             >
               Refresh
             </Button>
