@@ -11,6 +11,10 @@ type StockQuantityDisplayProps = {
   baseUnit?: string;
   size?: "sm" | "md" | "lg";
   align?: "left" | "center" | "right";
+  /** Prefix shown before the quantity, e.g. "+" / "−" for movement logs. */
+  leadingSign?: "+" | "−" | "";
+  /** Color the primary qty for stock-in / stock-out. */
+  tone?: "neutral" | "in" | "out";
   className?: string;
 };
 
@@ -26,6 +30,12 @@ const ALIGN = {
   right: "items-end text-right",
 } as const;
 
+const TONE = {
+  neutral: "text-stone-900",
+  in: "text-emerald-700",
+  out: "text-red-700",
+} as const;
+
 export function StockQuantityDisplay({
   quantity,
   stockUnit,
@@ -33,17 +43,22 @@ export function StockQuantityDisplay({
   baseUnit,
   size = "md",
   align = "left",
+  leadingSign = "",
+  tone = "neutral",
   className = "",
 }: StockQuantityDisplayProps) {
   const unitFields = { stockUnit, unitsPerStockUnit, baseUnit };
-  const split = splitBaseQuantity(quantity, unitFields);
+  const split = splitBaseQuantity(Math.abs(quantity), unitFields);
   const styles = SIZE[size];
+  const toneClass = TONE[tone];
+  const sign = leadingSign || "";
 
   if (!split.usesStockUnit) {
     return (
       <span className={`inline-flex flex-col tabular-nums ${ALIGN[align]} ${className}`}>
-        <span className={`${styles.primary} whitespace-nowrap text-stone-900`}>
-          {formatBaseUnits(quantity, unitFields)}
+        <span className={`${styles.primary} whitespace-nowrap ${toneClass}`}>
+          {sign}
+          {formatBaseUnits(Math.abs(quantity), unitFields)}
         </span>
       </span>
     );
@@ -53,7 +68,8 @@ export function StockQuantityDisplay({
 
   return (
     <span className={`inline-flex flex-col gap-0.5 tabular-nums ${ALIGN[align]} ${className}`}>
-      <span className={`${styles.primary} whitespace-nowrap text-stone-900`}>
+      <span className={`${styles.primary} whitespace-nowrap ${toneClass}`}>
+        {sign}
         {split.fullUnits.toLocaleString()} {packLabel}
       </span>
       {split.loose > 0 ? (

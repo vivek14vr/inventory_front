@@ -15,7 +15,7 @@ const navGroups = [
       { href: AUTH_ROUTES.adminDashboard, label: "Home" },
       { href: AUTH_ROUTES.adminStockIn, label: "Stock In" },
       { href: AUTH_ROUTES.adminStockOut, label: "Stock Out" },
-      { href: AUTH_ROUTES.adminTransfer, label: "Transfer" },
+      { href: AUTH_ROUTES.adminTransfer, label: "Send Stock" },
       { href: AUTH_ROUTES.adminReturn, label: "Return" },
       { href: AUTH_ROUTES.adminInventory, label: "Check Stock" },
       { href: AUTH_ROUTES.adminInvoices, label: "Invoices" },

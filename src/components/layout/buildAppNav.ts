@@ -40,7 +40,7 @@ export function buildAppNavGroups(
       Permission.TRANSFERS_MANAGE,
     ])
   ) {
-    mainMenu.push({ href: AUTH_ROUTES.appTransfer, label: "Transfer" });
+    mainMenu.push({ href: AUTH_ROUTES.appTransfer, label: "Send Stock" });
   }
   if (
     hasAnyPermission(role, permissions, [

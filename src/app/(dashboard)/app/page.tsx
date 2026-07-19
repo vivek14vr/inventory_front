@@ -206,9 +206,9 @@ export default function AppDashboardPage() {
               {showTransfers && (
                 <QuickActionCard
                   href={routes.transfer}
-                  title="Transfer"
-                  description="Send or receive stock"
-                  iconLabel="Transfer"
+                  title="Send Stock"
+                  description="Transfer to another warehouse"
+                  iconLabel="Send Stock"
                   size="large"
                   color="amber"
                   badge={

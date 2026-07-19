@@ -135,7 +135,7 @@ export default function AdminDashboardPage() {
                 href={AUTH_ROUTES.adminTransfer}
                 title="Send Stock"
                 description="Transfer to another warehouse"
-                iconLabel="Transfer"
+                iconLabel="Send Stock"
                 size="large"
                 color="amber"
                 badge={data.pendingTransfers > 0 ? String(data.pendingTransfers) : undefined}

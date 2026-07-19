@@ -49,6 +49,8 @@ export const AUTH_ROUTES = {
   appWrongInvoice: "/app/wrong-invoice",
   appInvoices: "/app/wrong-invoice",
   appInventory: "/app/inventory",
+  appInventoryItem: (warehouseId: string, productId: string) =>
+    `/app/inventory/${warehouseId}/${productId}`,
   appReceive: "/app/transfer",
   appTransfers: "/app/transfers",
   appReports: "/app/reports",
