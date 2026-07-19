@@ -5,6 +5,9 @@ export const Permission = {
   STOCK_VIEW: "stock.view",
   STOCK_IN: "stock.in",
   STOCK_OUT: "stock.out",
+  STOCK_ACTIONS: "stock.actions",
+  STOCK_MOVEMENTS: "stock.movements",
+  STOCK_LOW: "stock.low",
   RETURNS_CLIENT: "returns.client",
   RETURNS_WAREHOUSE: "returns.warehouse",
   INVENTORY_VIEW: "inventory.view",
@@ -58,10 +61,15 @@ const WAREHOUSE_SCOPED = new Set<PermissionCode>([
   Permission.STOCK_VIEW,
   Permission.STOCK_IN,
   Permission.STOCK_OUT,
+  Permission.STOCK_ACTIONS,
+  Permission.STOCK_MOVEMENTS,
+  Permission.STOCK_LOW,
   Permission.RETURNS_CLIENT,
   Permission.RETURNS_WAREHOUSE,
   Permission.TRANSFERS_VIEW,
   Permission.TRANSFERS_RECEIVE,
+  Permission.TRANSFERS_MANAGE,
+  Permission.REPORTS_VIEW,
 ]);
 
 export const CLIENT_RETURN_PERMISSIONS: PermissionCode[] = [
@@ -69,7 +77,7 @@ export const CLIENT_RETURN_PERMISSIONS: PermissionCode[] = [
 ];
 
 export const WAREHOUSE_RETURN_PERMISSIONS: PermissionCode[] = [
-  Permission.RETURNS_WAREHOUSE,
+  Permission.TRANSFERS_MANAGE,
 ];
 
 export const STOCK_BALANCE_READ_PERMISSIONS: PermissionCode[] = [
@@ -85,14 +93,28 @@ export const ADMIN_ONLY_PERMISSIONS: readonly PermissionCode[] = [
   Permission.INVENTORY_DASHBOARD,
   Permission.IMPORTS_MANAGE,
   Permission.AUDIT_VIEW,
-  Permission.TRANSFERS_MANAGE,
-  Permission.WAREHOUSES_MANAGE,
   Permission.USERS_MANAGE,
 ];
 
 export function isAdminOnlyPermission(code: string): boolean {
   return (ADMIN_ONLY_PERMISSIONS as readonly string[]).includes(code);
 }
+
+/** Keep in sync with backend MANAGE_IMPLIES_VIEW. */
+export const MANAGE_IMPLIES_VIEW: Partial<
+  Record<PermissionCode, PermissionCode>
+> = {
+  [Permission.PRODUCTS_MANAGE]: Permission.PRODUCTS_VIEW,
+  [Permission.BRANDS_MANAGE]: Permission.BRANDS_VIEW,
+  [Permission.CLIENTS_MANAGE]: Permission.CLIENTS_VIEW,
+  [Permission.WAREHOUSES_MANAGE]: Permission.WAREHOUSES_VIEW,
+};
+
+export const VIEW_IMPLIED_BY_MANAGE: Partial<
+  Record<PermissionCode, PermissionCode>
+> = Object.fromEntries(
+  Object.entries(MANAGE_IMPLIES_VIEW).map(([manage, view]) => [view, manage])
+) as Partial<Record<PermissionCode, PermissionCode>>;
 
 export function isWarehouseScopedPermission(code: PermissionCode): boolean {
   return WAREHOUSE_SCOPED.has(code);
@@ -125,7 +147,6 @@ export function defaultWarehouseOperatorPermissions(
     { code: Permission.STOCK_IN, warehouseId },
     { code: Permission.STOCK_OUT, warehouseId },
     { code: Permission.RETURNS_CLIENT, warehouseId },
-    { code: Permission.RETURNS_WAREHOUSE, warehouseId },
     { code: Permission.TRANSFERS_VIEW, warehouseId },
     { code: Permission.TRANSFERS_RECEIVE, warehouseId },
     { code: Permission.CHECKLISTS_COMPLETE },
@@ -154,7 +175,11 @@ export function hasPermission(
       (g) => g.code === code && g.warehouseId === warehouseId
     );
   }
-  return grants.some((g) => g.code === code);
+  if (grants.some((g) => g.code === code)) return true;
+  const manageThatImplies = VIEW_IMPLIED_BY_MANAGE[code];
+  return Boolean(
+    manageThatImplies && grants.some((g) => g.code === manageThatImplies)
+  );
 }
 
 /** True if the user holds the permission at any warehouse (or globally). */
@@ -164,7 +189,12 @@ export function hasPermissionSomewhere(
   code: PermissionCode
 ): boolean {
   if (isAdminRole(role)) return true;
-  return (permissions ?? []).some((g) => g.code === code);
+  const grants = permissions ?? [];
+  if (grants.some((g) => g.code === code)) return true;
+  const manageThatImplies = VIEW_IMPLIED_BY_MANAGE[code];
+  return Boolean(
+    manageThatImplies && grants.some((g) => g.code === manageThatImplies)
+  );
 }
 
 export function hasAnyPermission(
@@ -189,12 +219,40 @@ export function canWarehouseReturn(
   warehouseId?: string
 ): boolean {
   if (isAdminRole(role)) return true;
-  return hasPermission(
-    role,
-    permissions,
-    Permission.RETURNS_WAREHOUSE,
-    warehouseId
+  return (
+    hasPermission(role, permissions, Permission.TRANSFERS_MANAGE, warehouseId) ||
+    hasPermission(role, permissions, Permission.RETURNS_WAREHOUSE, warehouseId)
   );
+}
+
+/** Migrate legacy returns.warehouse → transfers.manage; Manage → ensure View. */
+export function migratePermissionGrants(
+  grants: PermissionGrant[] | undefined
+): PermissionGrant[] {
+  if (!grants?.length) return [];
+  const seen = new Set<string>();
+  const out: PermissionGrant[] = [];
+  for (const grant of grants) {
+    const code =
+      grant.code === Permission.RETURNS_WAREHOUSE
+        ? Permission.TRANSFERS_MANAGE
+        : grant.code;
+    const key = grant.warehouseId ? `${code}:${grant.warehouseId}` : code;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      code,
+      ...(grant.warehouseId ? { warehouseId: grant.warehouseId } : {}),
+    });
+  }
+  for (const grant of [...out]) {
+    const impliedView = MANAGE_IMPLIES_VIEW[grant.code];
+    if (!impliedView || grant.warehouseId) continue;
+    if (seen.has(impliedView)) continue;
+    seen.add(impliedView);
+    out.push({ code: impliedView });
+  }
+  return out;
 }
 
 /** First navigable path for a permission-based user */
@@ -212,12 +270,17 @@ export function getDefaultAppPath(
       path: "/app/stock",
     },
     {
-      codes: [Permission.STOCK_VIEW, Permission.INVENTORY_VIEW],
+      codes: [
+        Permission.STOCK_VIEW,
+        Permission.STOCK_MOVEMENTS,
+        Permission.STOCK_LOW,
+        Permission.INVENTORY_VIEW,
+      ],
       path: "/app/inventory",
     },
-    { codes: [Permission.RETURNS_CLIENT, Permission.RETURNS_WAREHOUSE], path: "/app/return" },
-    { codes: [Permission.TRANSFERS_RECEIVE, Permission.STOCK_OUT], path: "/app/transfer" },
-    { codes: [Permission.TRANSFERS_VIEW, Permission.TRANSFERS_MANAGE], path: "/app/transfers" },
+    { codes: [Permission.RETURNS_CLIENT], path: "/app/return" },
+    { codes: [Permission.TRANSFERS_VIEW, Permission.TRANSFERS_RECEIVE], path: "/app/transfer" },
+    { codes: [Permission.TRANSFERS_MANAGE], path: "/app/transfers" },
     { codes: [Permission.REPORTS_VIEW], path: "/app/reports" },
     { codes: [Permission.IMPORTS_MANAGE], path: "/app/imports" },
     { codes: [Permission.WAREHOUSES_MANAGE, Permission.WAREHOUSES_VIEW], path: "/app/warehouses" },
@@ -254,16 +317,11 @@ export const APP_ROUTE_PERMISSIONS: Array<{
   },
   {
     prefix: "/app/transfer",
-    permissions: [
-      Permission.STOCK_OUT,
-      Permission.TRANSFERS_RECEIVE,
-      Permission.TRANSFERS_VIEW,
-      Permission.TRANSFERS_MANAGE,
-    ],
+    permissions: [Permission.TRANSFERS_VIEW, Permission.TRANSFERS_RECEIVE],
   },
   {
     prefix: "/app/return",
-    permissions: [Permission.RETURNS_CLIENT, Permission.RETURNS_WAREHOUSE],
+    permissions: [Permission.RETURNS_CLIENT],
   },
   {
     prefix: "/app/wrong-invoice",
@@ -276,15 +334,16 @@ export const APP_ROUTE_PERMISSIONS: Array<{
   },
   {
     prefix: "/app/inventory",
-    permissions: [Permission.STOCK_VIEW, Permission.INVENTORY_VIEW],
+    permissions: [
+      Permission.STOCK_VIEW,
+      Permission.STOCK_MOVEMENTS,
+      Permission.STOCK_LOW,
+      Permission.INVENTORY_VIEW,
+    ],
   },
   {
     prefix: "/app/transfers",
-    permissions: [
-      Permission.TRANSFERS_VIEW,
-      Permission.TRANSFERS_RECEIVE,
-      Permission.TRANSFERS_MANAGE,
-    ],
+    permissions: [Permission.TRANSFERS_MANAGE],
   },
   {
     prefix: "/app/notifications",

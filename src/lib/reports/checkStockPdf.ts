@@ -7,6 +7,7 @@ import {
 } from "@/lib/products/productUnits";
 import {
   movementDetails,
+  movementFilterKindLabel,
   movementTypeLabel,
 } from "@/lib/inventory/movementDisplay";
 import { escapeHtml, openPrintWindow } from "@/lib/reports/printReport";
@@ -50,9 +51,7 @@ function formatFilterSummary(filters: CheckStockPdfFilters): string {
   if (filters.brandName) parts.push(`Brand: ${filters.brandName}`);
   if (filters.search?.trim()) parts.push(`Search: ${filters.search.trim()}`);
   if (filters.movementType) {
-    parts.push(
-      `Movement: ${filters.movementType === "STOCK_IN" ? "Stock In" : "Stock Out"}`
-    );
+    parts.push(`Movement: ${movementFilterKindLabel(filters.movementType)}`);
   }
   if (filters.sortBy) {
     parts.push(`Sort: ${filters.sortBy} (${filters.sortOrder ?? "desc"})`);

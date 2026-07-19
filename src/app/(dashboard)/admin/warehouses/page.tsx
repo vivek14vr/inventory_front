@@ -5,11 +5,15 @@ import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permission } from "@/lib/auth/permissions";
 import type { Warehouse } from "@/types/master";
 
 const emptyForm = { name: "", code: "", editId: "" as string | null };
 
 export default function AdminWarehousesPage() {
+  const { can, isAdmin } = usePermissions();
+  const canManage = isAdmin || can(Permission.WAREHOUSES_MANAGE);
   const [items, setItems] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -22,25 +26,27 @@ export default function AdminWarehousesPage() {
     setLoading(true);
     setError("");
     try {
-      setItems(await api.warehouses.list(true));
+      setItems(await api.warehouses.list(canManage));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load warehouses");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canManage]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   function startCreate() {
+    if (!canManage) return;
     setForm(emptyForm);
     setShowForm(true);
     setSuccess("");
   }
 
   function startEdit(item: Warehouse) {
+    if (!canManage) return;
     setForm({ name: item.name, code: item.code, editId: item.id });
     setShowForm(true);
     setSuccess("");
@@ -48,6 +54,7 @@ export default function AdminWarehousesPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!canManage) return;
     setSubmitting(true);
     setError("");
     setSuccess("");
@@ -76,6 +83,7 @@ export default function AdminWarehousesPage() {
   }
 
   async function toggleActive(item: Warehouse) {
+    if (!canManage) return;
     setError("");
     try {
       await api.warehouses.update(item.id, { isActive: !item.isActive });
@@ -88,9 +96,13 @@ export default function AdminWarehousesPage() {
   return (
     <MasterPage
       title="Warehouses"
-      description="Manage warehouse locations. Vasai and Goregaon are seeded by default."
-      showForm={showForm}
-      onAdd={startCreate}
+      description={
+        canManage
+          ? "Manage warehouse locations. Vasai and Goregaon are seeded by default."
+          : "View warehouse locations."
+      }
+      showForm={showForm && canManage}
+      onAdd={canManage ? startCreate : undefined}
       onCancel={() => {
         setShowForm(false);
         setForm(emptyForm);
@@ -115,7 +127,7 @@ export default function AdminWarehousesPage() {
       <DataTable
         loading={loading}
         empty="No warehouses"
-        headers={["Name", "Code", "Status", ""]}
+        headers={canManage ? ["Name", "Code", "Status", ""] : ["Name", "Code", "Status"]}
         rows={items.map((w) => (
           <tr key={w.id} className="border-t border-zinc-100">
             <td className="px-4 py-3 font-medium">{w.name}</td>
@@ -123,14 +135,24 @@ export default function AdminWarehousesPage() {
             <td className="px-4 py-3">
               <StatusBadge active={w.isActive} />
             </td>
-            <td className="px-4 py-3 text-right space-x-3">
-              <button onClick={() => startEdit(w)} className="text-xs text-zinc-600 hover:text-zinc-900">
-                Edit
-              </button>
-              <button onClick={() => toggleActive(w)} className="text-xs text-zinc-600 hover:text-zinc-900">
-                {w.isActive ? "Deactivate" : "Activate"}
-              </button>
-            </td>
+            {canManage ? (
+              <td className="px-4 py-3 text-right space-x-3">
+                <button
+                  type="button"
+                  onClick={() => startEdit(w)}
+                  className="text-xs text-zinc-600 hover:text-zinc-900"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleActive(w)}
+                  className="text-xs text-zinc-600 hover:text-zinc-900"
+                >
+                  {w.isActive ? "Deactivate" : "Activate"}
+                </button>
+              </td>
+            ) : null}
           </tr>
         ))}
       />
@@ -156,7 +178,7 @@ function MasterPage({
   description: string;
   children: React.ReactNode;
   showForm: boolean;
-  onAdd: () => void;
+  onAdd?: () => void;
   onCancel: () => void;
   formTitle: string;
   onSubmit: (e: React.FormEvent) => void;
@@ -171,12 +193,15 @@ function MasterPage({
         title={title}
         description={description}
         actions={
-          <button
-            onClick={showForm ? onCancel : onAdd}
-            className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800"
-          >
-            {showForm ? "Cancel" : `Add ${title.slice(0, -1).toLowerCase() || "item"}`}
-          </button>
+          onAdd ? (
+            <button
+              type="button"
+              onClick={showForm ? onCancel : onAdd}
+              className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800"
+            >
+              {showForm ? "Cancel" : `Add ${title.slice(0, -1).toLowerCase() || "item"}`}
+            </button>
+          ) : undefined
         }
       />
       <Alert message={error} />

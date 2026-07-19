@@ -5,6 +5,8 @@ import { api, ApiError } from "@/lib/api/client";
 import {
   defaultWarehouseOperatorPermissions,
   isAdminOnlyPermission,
+  MANAGE_IMPLIES_VIEW,
+  VIEW_IMPLIED_BY_MANAGE,
   type PermissionCode,
   type PermissionGrant,
   type PermissionModuleDefinition,
@@ -118,20 +120,79 @@ export function PermissionEditor({
   );
 
   function isChecked(code: PermissionCode, warehouseId?: string): boolean {
-    return value.some(
-      (g) =>
-        g.code === code &&
-        (warehouseId ? g.warehouseId === warehouseId : !g.warehouseId)
-    );
+    if (
+      value.some(
+        (g) =>
+          g.code === code &&
+          (warehouseId ? g.warehouseId === warehouseId : !g.warehouseId)
+      )
+    ) {
+      return true;
+    }
+    // Manage implies View for company master-data modules.
+    if (!warehouseId) {
+      const manageCode = VIEW_IMPLIED_BY_MANAGE[code];
+      if (
+        manageCode &&
+        value.some((g) => g.code === manageCode && !g.warehouseId)
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   function toggle(code: PermissionCode, warehouseId?: string) {
-    const key = warehouseId ? `${code}:${warehouseId}` : code;
-    if (value.some((g) => grantKey(g) === key)) {
-      onChange(value.filter((g) => grantKey(g) !== key));
+    if (warehouseId) {
+      const key = `${code}:${warehouseId}`;
+      if (value.some((g) => grantKey(g) === key)) {
+        onChange(value.filter((g) => grantKey(g) !== key));
+        return;
+      }
+      onChange([...value, { code, warehouseId }]);
       return;
     }
-    onChange([...value, { code, ...(warehouseId ? { warehouseId } : {}) }]);
+
+    const impliedView = MANAGE_IMPLIES_VIEW[code];
+    const manageForView = VIEW_IMPLIED_BY_MANAGE[code];
+    const hasExact = value.some((g) => g.code === code && !g.warehouseId);
+
+    // Turning Manage off → keep View (read-only).
+    if (impliedView && hasExact) {
+      const next = value.filter((g) => !(g.code === code && !g.warehouseId));
+      if (!next.some((g) => g.code === impliedView && !g.warehouseId)) {
+        next.push({ code: impliedView });
+      }
+      onChange(next);
+      return;
+    }
+
+    // Turning View off → also clear Manage.
+    if (manageForView && isChecked(code)) {
+      onChange(
+        value.filter(
+          (g) =>
+            !(!g.warehouseId && (g.code === code || g.code === manageForView))
+        )
+      );
+      return;
+    }
+
+    // Turning something off that isn't a view/manage pair.
+    if (hasExact) {
+      onChange(value.filter((g) => !(g.code === code && !g.warehouseId)));
+      return;
+    }
+
+    // Turning on: Manage also adds View.
+    const next = [...value, { code }];
+    if (
+      impliedView &&
+      !next.some((g) => g.code === impliedView && !g.warehouseId)
+    ) {
+      next.push({ code: impliedView });
+    }
+    onChange(next);
   }
 
   function grantsForModule(mod: PermissionModuleDefinition): PermissionGrant[] {

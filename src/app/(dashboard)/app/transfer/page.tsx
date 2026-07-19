@@ -6,16 +6,11 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { Permission } from "@/lib/auth/permissions";
 
 export default function AppTransferPage() {
-  const { canAny, isAdmin, needsWarehousePicker, defaultWarehouseId, warehousesFor } =
-    usePermissions();
-  const requireWarehouse = needsWarehousePicker(Permission.STOCK_OUT);
-  const allowedWarehouseIds = warehousesFor(Permission.STOCK_OUT);
+  const { canAny, isAdmin, defaultWarehouseId } = usePermissions();
 
   const canUse = canAny([
-    Permission.STOCK_OUT,
-    Permission.TRANSFERS_RECEIVE,
     Permission.TRANSFERS_VIEW,
-    Permission.TRANSFERS_MANAGE,
+    Permission.TRANSFERS_RECEIVE,
   ]);
 
   return (
@@ -31,11 +26,7 @@ export default function AppTransferPage() {
         </p>
       ) : (
         <TransferPanel
-          requireWarehouse={requireWarehouse}
           defaultWarehouseId={defaultWarehouseId()}
-          allowedWarehouseIds={
-            allowedWarehouseIds.length ? allowedWarehouseIds : undefined
-          }
           showDestinationFilter={isAdmin}
         />
       )}

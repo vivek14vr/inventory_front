@@ -9,6 +9,7 @@ import {
   defaultWarehouseOperatorPermissions,
   hasWarehouseScopedPermission,
   isAdminRole,
+  migratePermissionGrants,
   type PermissionGrant,
   type PermissionModuleDefinition,
 } from "@/lib/auth/permissions";
@@ -156,7 +157,9 @@ export function UsersPageContent() {
     setError("");
     setSuccess("");
     try {
-      await api.users.update(editing.id, { permissions: editPermissions });
+      await api.users.update(editing.id, {
+        permissions: migratePermissionGrants(editPermissions),
+      });
       setEditing(null);
       setSuccess(
         `Access updated for ${editing.name}. They must log in again to use the new access.`
@@ -236,7 +239,7 @@ export function UsersPageContent() {
 
   function openEditPermissions(user: PublicUser) {
     setEditing(user);
-    const existing = user.permissions ?? [];
+    const existing = migratePermissionGrants(user.permissions ?? []);
     if (
       existing.length === 0 &&
       user.role === "WAREHOUSE_USER" &&
@@ -305,42 +308,6 @@ export function UsersPageContent() {
           </div>
         }
       />
-
-      <section>
-        <h2 className="mb-3 text-lg font-bold text-stone-800">
-          App modules
-        </h2>
-        <p className="mb-4 text-sm text-stone-500">
-          These are the modules you can grant. Staff get only what you turn on;
-          admins get everything.
-        </p>
-        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-          {catalog.length === 0 && !loading
-            ? null
-            : (catalog.length > 0
-                ? catalog
-                : Array.from({ length: 8 }, (_, i) => ({
-                    id: `skeleton-${i}`,
-                    label: "…",
-                    description: "",
-                  }))
-              ).map((mod) => (
-                <div
-                  key={mod.id}
-                  className="rounded-2xl border-2 border-stone-200 bg-white px-4 py-4 shadow-sm"
-                >
-                  <p className="text-base font-bold text-stone-900 leading-snug">
-                    {mod.label}
-                  </p>
-                  {"description" in mod && mod.description ? (
-                    <p className="mt-1.5 line-clamp-2 text-xs text-stone-500">
-                      {mod.description}
-                    </p>
-                  ) : null}
-                </div>
-              ))}
-        </div>
-      </section>
 
       <div className="grid gap-3 sm:grid-cols-3">
         <InfoCard

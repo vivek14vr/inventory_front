@@ -3,11 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
 import { ButtonSelect } from "@/components/ui/ButtonSelect";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { usePagination } from "@/hooks/usePagination";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permission } from "@/lib/auth/permissions";
 import type { PaginationMeta } from "@/types/pagination";
 import type { Brand, Product, ProductWarehouseThreshold } from "@/types/master";
 import { formatSecondaryName } from "@/lib/products/productNames";
@@ -41,6 +44,9 @@ const emptyForm = {
 };
 
 export default function AdminProductsPage() {
+  const { can, isAdmin } = usePermissions();
+  const canManage = isAdmin || can(Permission.PRODUCTS_MANAGE);
+
   const [products, setProducts] = useState<Product[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [filterBrandId, setFilterBrandId] = useState("");
@@ -66,6 +72,15 @@ export default function AdminProductsPage() {
     () => createAdminProductsPageSuggestions(filterBrandId || undefined),
     [filterBrandId]
   );
+
+  useEffect(() => {
+    if (!canManage && showForm) {
+      setShowForm(false);
+      setForm(emptyForm);
+      setWarehouseThresholds({});
+      setWarehouseThresholdRows([]);
+    }
+  }, [canManage, showForm]);
 
   const perPack = parseInt(form.unitsPerStockUnit, 10) || 1;
   const formBaseUnit = form.baseUnit.trim() || "piece";
@@ -105,9 +120,9 @@ export default function AdminProductsPage() {
     try {
       const [productResult, brandList] = await Promise.all([
         api.products.list({
-          includeInactive: true,
+          includeInactive: canManage,
           includeWarehouseThresholds: true,
-          includeStockTotals: true,
+          includeStockTotals: canManage,
           brandId: filterBrandId || undefined,
           page,
           limit,
@@ -123,7 +138,7 @@ export default function AdminProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [filterBrandId, page, limit, search]);
+  }, [canManage, filterBrandId, page, limit, search]);
 
   useEffect(() => {
     load();
@@ -232,63 +247,77 @@ export default function AdminProductsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Products"
-        description={`Primary name + brand must be unique (case-insensitive). Set an overall total low-stock alert, then independent alerts for each warehouse below. Blank values default to ${DEFAULT_LOW_STOCK_STOCK_UNITS} cartons.`}
+        description={
+          canManage
+            ? `Primary name + brand must be unique (case-insensitive). Set an overall total low-stock alert, then independent alerts for each warehouse below. Blank values default to ${DEFAULT_LOW_STOCK_STOCK_UNITS} cartons.`
+            : "Browse the product catalogue, units, and low-stock alerts."
+        }
       />
 
-      <div className="flex flex-wrap items-center gap-4 justify-between">
-        <div>
-          <label className="text-sm font-medium text-zinc-700">Search</label>
-          <SearchInputWithSuggestions
-            value={search}
-            onChange={(value) => {
-              setSearch(value);
-              resetPage();
-            }}
-            onSelect={(suggestion) => {
-              setSearch(suggestion.searchTerm);
-              resetPage();
-            }}
-            fetchSuggestions={fetchProductSuggestions}
-            placeholder="Product name…"
-            ariaLabel="Search products"
-            wrapperClassName="ml-2 inline-block min-w-[220px]"
-            inputClassName="w-full rounded-lg border border-zinc-300 px-3 py-1.5 pl-10 text-sm"
-            emptyMessage={(term) => `No products match “${term}”`}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <ButtonSelect
-            label="Filter by brand"
-            value={filterBrandId}
-            onChange={(v) => {
-              setFilterBrandId(v);
-              resetPage();
-            }}
-            size="sm"
-            options={[
-              { value: "", label: "All brands" },
-              ...brands.map((b) => ({ value: b.id, label: b.name })),
-            ]}
-          />
-          <button
-            onClick={() => {
-              setShowForm(!showForm);
-              setForm(emptyForm);
-              setWarehouseThresholds({});
-              setWarehouseThresholdRows([]);
-              setThresholdMode("units");
-            }}
-            className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800"
-          >
-            {showForm ? "Cancel" : "Add product"}
-          </button>
+      <div className="flex flex-col gap-4 rounded-xl border border-zinc-200/80 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex min-w-0 flex-1 flex-col gap-4 md:flex-row md:items-end">
+            <div className="min-w-0 flex-1 md:max-w-sm">
+              <label className="block text-sm font-semibold text-stone-700">
+                Search
+              </label>
+              <SearchInputWithSuggestions
+                value={search}
+                onChange={(value) => {
+                  setSearch(value);
+                  resetPage();
+                }}
+                onSelect={(suggestion) => {
+                  setSearch(suggestion.searchTerm);
+                  resetPage();
+                }}
+                fetchSuggestions={fetchProductSuggestions}
+                placeholder="Product name…"
+                ariaLabel="Search products"
+                wrapperClassName="mt-2 w-full"
+                inputClassName="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                emptyMessage={(term) => `No products match “${term}”`}
+              />
+            </div>
+            <ButtonSelect
+              label="Filter by brand"
+              value={filterBrandId}
+              onChange={(v) => {
+                setFilterBrandId(v);
+                resetPage();
+              }}
+              size="sm"
+              className="min-w-0"
+              options={[
+                { value: "", label: "All brands" },
+                ...brands.map((b) => ({ value: b.id, label: b.name })),
+              ]}
+            />
+          </div>
+          {canManage ? (
+            <Button
+              type="button"
+              onClick={() => {
+                setShowForm(!showForm);
+                setForm(emptyForm);
+                setWarehouseThresholds({});
+                setWarehouseThresholdRows([]);
+                setThresholdMode("units");
+                setError("");
+                setSuccess("");
+              }}
+              className="shrink-0 self-start lg:self-end"
+            >
+              {showForm ? "Cancel" : "Add product"}
+            </Button>
+          ) : null}
         </div>
       </div>
 
       <Alert message={error} />
       <Alert message={success} type="success" />
 
-      {showForm && (
+      {canManage && showForm && (
         <form
           onSubmit={handleSubmit}
           className="rounded-xl border border-zinc-200 bg-white p-6 space-y-4"
@@ -468,19 +497,25 @@ export default function AdminProductsPage() {
               <th className="px-4 py-3">Units</th>
               <th className="px-4 py-3">Low stock</th>
               <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3"></th>
+              {canManage ? <th className="px-4 py-3"></th> : null}
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-zinc-500">
+                <td
+                  colSpan={canManage ? 6 : 5}
+                  className="px-4 py-8 text-center text-zinc-500"
+                >
                   Loading…
                 </td>
               </tr>
             ) : products.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-zinc-500">
+                <td
+                  colSpan={canManage ? 6 : 5}
+                  className="px-4 py-8 text-center text-zinc-500"
+                >
                   No products
                 </td>
               </tr>
@@ -505,51 +540,57 @@ export default function AdminProductsPage() {
                   <td className="px-4 py-3">
                     <StatusBadge active={p.isActive} />
                   </td>
-                  <td className="px-4 py-3 text-right space-x-3">
-                    <button
-                      onClick={() => {
-                        setForm({
-                          name: p.name,
-                          secondaryName: p.secondaryName ?? "",
-                          brandId: p.brandId,
-                          baseUnit: p.baseUnit ?? "piece",
-                          stockUnit: p.unitsPerStockUnit > 1 ? p.stockUnit : "",
-                          unitsPerStockUnit: String(p.unitsPerStockUnit),
-                          totalLowStockThreshold:
-                            p.totalLowStockThreshold != null
-                              ? String(p.totalLowStockThreshold)
-                              : "",
-                          editId: p.id,
-                        });
-                        setWarehouseThresholds({});
-                        setWarehouseThresholdRows([]);
-                        setThresholdMode("units");
-                        setShowForm(true);
-                      }}
-                      className="text-xs text-zinc-600 hover:text-zinc-900"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => toggleActive(p)}
-                      className="text-xs text-zinc-600 hover:text-zinc-900"
-                    >
-                      {p.isActive ? "Deactivate" : "Activate"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(p)}
-                      disabled={(p.totalStock ?? 0) > 0}
-                      title={
-                        (p.totalStock ?? 0) > 0
-                          ? "Stock must be zero at all warehouses before delete"
-                          : "Delete product"
-                      }
-                      className="text-xs text-red-600 hover:text-red-800 disabled:cursor-not-allowed disabled:text-zinc-300"
-                    >
-                      Delete
-                    </button>
-                  </td>
+                  {canManage ? (
+                    <td className="px-4 py-3 text-right space-x-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm({
+                            name: p.name,
+                            secondaryName: p.secondaryName ?? "",
+                            brandId: p.brandId,
+                            baseUnit: p.baseUnit ?? "piece",
+                            stockUnit: p.unitsPerStockUnit > 1 ? p.stockUnit : "",
+                            unitsPerStockUnit: String(p.unitsPerStockUnit),
+                            totalLowStockThreshold:
+                              p.totalLowStockThreshold != null
+                                ? String(p.totalLowStockThreshold)
+                                : "",
+                            editId: p.id,
+                          });
+                          setWarehouseThresholds({});
+                          setWarehouseThresholdRows([]);
+                          setThresholdMode("units");
+                          setError("");
+                          setSuccess("");
+                          setShowForm(true);
+                        }}
+                        className="text-xs text-zinc-600 hover:text-zinc-900"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleActive(p)}
+                        className="text-xs text-zinc-600 hover:text-zinc-900"
+                      >
+                        {p.isActive ? "Deactivate" : "Activate"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(p)}
+                        disabled={(p.totalStock ?? 0) > 0}
+                        title={
+                          (p.totalStock ?? 0) > 0
+                            ? "Stock must be zero at all warehouses before delete"
+                            : "Delete product"
+                        }
+                        className="text-xs text-red-600 hover:text-red-800 disabled:cursor-not-allowed disabled:text-zinc-300"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  ) : null}
                 </tr>
               ))
             )}

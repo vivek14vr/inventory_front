@@ -1,14 +1,26 @@
 "use client";
 
+import { useMemo } from "react";
 import { ReturnPanel } from "@/components/stock/ReturnPanel";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/usePermissions";
 import { AUTH_ROUTES } from "@/lib/auth/constants";
-import { getPrimaryWarehouseId } from "@/lib/auth/warehouseContext";
+import { Permission } from "@/lib/auth/permissions";
 
 export default function AppReturnPage() {
-  const { user } = useAuth();
-  const warehouseId = getPrimaryWarehouseId(user) ?? "";
+  const { isAdmin, warehousesFor, defaultWarehouseId } = usePermissions();
+
+  const allowedWarehouseIds = useMemo(() => {
+    if (isAdmin) return undefined;
+    return warehousesFor(Permission.RETURNS_CLIENT);
+  }, [isAdmin, warehousesFor]);
+
+  const defaultId = useMemo(() => {
+    const primary = defaultWarehouseId();
+    if (isAdmin) return primary;
+    if (allowedWarehouseIds?.includes(primary)) return primary;
+    return allowedWarehouseIds?.[0] ?? "";
+  }, [isAdmin, allowedWarehouseIds, defaultWarehouseId]);
 
   return (
     <div className="space-y-6 text-zinc-900">
@@ -17,8 +29,9 @@ export default function AppReturnPage() {
         description="Record goods returned from a client by updating sold quantities on an invoice."
       />
       <ReturnPanel
-        defaultWarehouseId={warehouseId}
-        allowedWarehouseIds={warehouseId ? [warehouseId] : undefined}
+        defaultWarehouseId={defaultId}
+        allowedWarehouseIds={allowedWarehouseIds}
+        requireWarehouse={isAdmin || (allowedWarehouseIds?.length ?? 0) !== 1}
         backHref={AUTH_ROUTES.appDashboard}
       />
     </div>

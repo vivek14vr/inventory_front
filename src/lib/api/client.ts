@@ -507,6 +507,7 @@ export const api = {
         brandId?: string;
         productId?: string;
         type?: string;
+        kind?: string;
         dateFrom?: string;
         dateTo?: string;
         search?: string;

@@ -2,6 +2,24 @@ import type { StockMovement } from "@/types/stock";
 
 const INVOICE_QTY_CORRECTION_PREFIX = "invoice quantity correction";
 
+/** Values sent as `kind` on /inventory/movements (matches backend). */
+export const MOVEMENT_FILTER_KINDS = [
+  { value: "stock_in", label: "Stock In" },
+  { value: "stock_out", label: "Stock Out" },
+  { value: "sale", label: "Sale" },
+  { value: "transfer_in", label: "Transfer in" },
+  { value: "transfer_out", label: "Transfer out" },
+  { value: "return", label: "Return" },
+  { value: "adjustment", label: "Adjustment" },
+  { value: "invoice_edit", label: "Invoice edit" },
+] as const;
+
+export type MovementFilterKind = (typeof MOVEMENT_FILTER_KINDS)[number]["value"];
+
+export function movementFilterKindLabel(kind: string): string {
+  return MOVEMENT_FILTER_KINDS.find((k) => k.value === kind)?.label ?? kind;
+}
+
 function notesLower(m: StockMovement): string {
   return m.notes?.trim().toLowerCase() ?? "";
 }

@@ -1,12 +1,14 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { ButtonSelect } from "@/components/ui/ButtonSelect";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import { ThresholdUnitToggle } from "@/components/products/ThresholdUnitToggle";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permission } from "@/lib/auth/permissions";
 import {
   formatBaseQuantityWithStockUnit,
   formatBaseUnits,
@@ -146,6 +148,8 @@ function handleReportTypeChange(
 }
 
 export default function AdminReportsPage() {
+  const { isAdmin, warehousesFor } = usePermissions();
+  const reportWarehouseIds = warehousesFor(Permission.REPORTS_VIEW);
   const [reportType, setReportType] = useState<ReportType>("stock");
   const [filters, setFilters] = useState<ReportFilters>(() => ({
     groupBy: "detail",
@@ -163,11 +167,28 @@ export default function AdminReportsPage() {
   const [expandedBrands, setExpandedBrands] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    Promise.all([api.warehouses.list(true), api.brands.list()]).then(([w, b]) => {
+    Promise.all([api.warehouses.list(isAdmin), api.brands.list()]).then(([w, b]) => {
       setWarehouses(w);
       setBrands(b);
     });
-  }, []);
+  }, [isAdmin]);
+
+  const warehouseOptions = useMemo(() => {
+    if (isAdmin) return warehouses;
+    if (reportWarehouseIds.length === 0) return [];
+    const allowed = new Set(reportWarehouseIds);
+    return warehouses.filter((w) => allowed.has(w.id));
+  }, [isAdmin, warehouses, reportWarehouseIds]);
+
+  useEffect(() => {
+    if (
+      filters.warehouseId &&
+      warehouseOptions.length > 0 &&
+      !warehouseOptions.some((w) => w.id === filters.warehouseId)
+    ) {
+      setFilters((prev) => ({ ...prev, warehouseId: undefined }));
+    }
+  }, [filters.warehouseId, warehouseOptions]);
 
   useEffect(() => {
     if (filters.brandId) {
@@ -283,7 +304,7 @@ export default function AdminReportsPage() {
             onChange={(v) => setFilters({ ...filters, warehouseId: v || undefined })}
             options={[
               { value: "", label: "All" },
-              ...warehouses.map((w) => ({ value: w.id, label: w.name })),
+              ...warehouseOptions.map((w) => ({ value: w.id, label: w.name })),
             ]}
           />
           <FilterSelect

@@ -34,25 +34,20 @@ export function buildAppNavGroups(
   }
   if (
     hasAnyPermission(role, permissions, [
-      Permission.STOCK_OUT,
-      Permission.TRANSFERS_RECEIVE,
       Permission.TRANSFERS_VIEW,
-      Permission.TRANSFERS_MANAGE,
+      Permission.TRANSFERS_RECEIVE,
     ])
   ) {
     mainMenu.push({ href: AUTH_ROUTES.appTransfer, label: "Send Stock" });
   }
-  if (
-    hasAnyPermission(role, permissions, [
-      Permission.RETURNS_CLIENT,
-      Permission.RETURNS_WAREHOUSE,
-    ])
-  ) {
+  if (hasAnyPermission(role, permissions, [Permission.RETURNS_CLIENT])) {
     mainMenu.push({ href: AUTH_ROUTES.appReturn, label: "Return" });
   }
   if (
     hasAnyPermission(role, permissions, [
       Permission.STOCK_VIEW,
+      Permission.STOCK_MOVEMENTS,
+      Permission.STOCK_LOW,
       Permission.INVENTORY_VIEW,
     ])
   ) {
@@ -70,13 +65,7 @@ export function buildAppNavGroups(
     mainMenu.push({ href: AUTH_ROUTES.appReports, label: "Reports" });
   }
 
-  if (
-    hasAnyPermission(role, permissions, [
-      Permission.TRANSFERS_VIEW,
-      Permission.TRANSFERS_RECEIVE,
-      Permission.TRANSFERS_MANAGE,
-    ])
-  ) {
+  if (hasAnyPermission(role, permissions, [Permission.TRANSFERS_MANAGE])) {
     moreMenu.push({ href: AUTH_ROUTES.appTransfers, label: "Transfer History" });
   }
   if (hasAnyPermission(role, permissions, [Permission.IMPORTS_MANAGE])) {

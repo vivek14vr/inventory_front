@@ -10,7 +10,7 @@ export default function AdminTransferPage() {
         title="Transfer"
         description="Send stock from one warehouse to another, or receive incoming transfers."
       />
-      <TransferPanel requireWarehouse showDestinationFilter />
+      <TransferPanel showDestinationFilter />
     </div>
   );
 }

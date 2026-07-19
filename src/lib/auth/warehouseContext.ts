@@ -15,6 +15,8 @@ export function getPrimaryWarehouseId(user: AuthUser | null | undefined): string
   const grants = user.permissions ?? [];
   for (const code of [
     Permission.STOCK_VIEW,
+    Permission.STOCK_MOVEMENTS,
+    Permission.STOCK_LOW,
     Permission.STOCK_IN,
     Permission.INVENTORY_VIEW,
     Permission.TRANSFERS_VIEW,
@@ -56,7 +58,6 @@ export function canViewPendingTransfers(user: AuthUser | null | undefined): bool
   if (!user) return false;
   const warehouseId = getPrimaryWarehouseId(user);
   return (
-    hasPermission(user.role, user.permissions, Permission.TRANSFERS_VIEW, warehouseId) ||
     hasPermission(user.role, user.permissions, Permission.TRANSFERS_RECEIVE, warehouseId) ||
     hasPermission(user.role, user.permissions, Permission.TRANSFERS_MANAGE, warehouseId)
   );

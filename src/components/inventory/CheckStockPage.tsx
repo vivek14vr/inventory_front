@@ -79,7 +79,9 @@ import {
   type CheckStockPdfFilters,
 } from "@/lib/reports/checkStockPdf";
 import {
+  MOVEMENT_FILTER_KINDS,
   movementDetails,
+  movementFilterKindLabel,
   movementTypeBadgeClass,
   movementTypeLabel,
 } from "@/lib/inventory/movementDisplay";
@@ -195,10 +197,27 @@ async function fetchAllLowStockForPdf(
 
 function CheckStockPageContent() {
   const routes = useCheckStockRoutes();
-  const { can } = usePermissions();
+  const { can, isAdmin, warehousesFor } = usePermissions();
   const showStockInAction = can(Permission.STOCK_IN);
+  const canBrowseAllTabs = isAdmin || can(Permission.INVENTORY_VIEW);
+  const allowedTabs = useMemo(() => {
+    const tabs: Array<{ key: Tab; label: string }> = [];
+    if (canBrowseAllTabs || can(Permission.STOCK_VIEW)) {
+      tabs.push({ key: "stock", label: "Current stock" });
+    }
+    if (canBrowseAllTabs || can(Permission.STOCK_MOVEMENTS)) {
+      tabs.push({ key: "movements", label: "Movements" });
+    }
+    if (canBrowseAllTabs || can(Permission.STOCK_LOW)) {
+      tabs.push({ key: "low-stock", label: "Low stock" });
+    }
+    return tabs;
+  }, [can, canBrowseAllTabs]);
   const searchParams = useSearchParams();
-  const [tab, setTab] = useState<Tab>("stock");
+  const [tab, setTab] = useState<Tab | null>(null);
+  const activeTab: Tab = allowedTabs.some((t) => t.key === tab)
+    ? (tab as Tab)
+    : (allowedTabs[0]?.key ?? "stock");
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [warehouseId, setWarehouseId] = useState("");
@@ -221,10 +240,63 @@ function CheckStockPageContent() {
 
   const { page, setPage, limit, setLimit, resetPage } = usePagination(20);
 
+  /** Warehouses allowed for the active Check Stock tab (null = company-wide). */
+  const allowedWarehouseIds = useMemo(() => {
+    if (canBrowseAllTabs) return null;
+    const code =
+      activeTab === "stock"
+        ? Permission.STOCK_VIEW
+        : activeTab === "movements"
+          ? Permission.STOCK_MOVEMENTS
+          : Permission.STOCK_LOW;
+    return new Set(warehousesFor(code));
+  }, [canBrowseAllTabs, activeTab, warehousesFor]);
+
+  const warehouseFilterOptions = useMemo(() => {
+    if (!allowedWarehouseIds) return warehouses.filter((w) => w.isActive);
+    return warehouses.filter((w) => w.isActive && allowedWarehouseIds.has(w.id));
+  }, [warehouses, allowedWarehouseIds]);
+
+  /** Never call APIs with a warehouse that isn't allowed for this tab. */
+  const effectiveWarehouseId = useMemo(() => {
+    if (!allowedWarehouseIds) return warehouseId;
+    if (warehouseId && allowedWarehouseIds.has(warehouseId)) return warehouseId;
+    if (allowedWarehouseIds.size === 1) return [...allowedWarehouseIds][0]!;
+    return "";
+  }, [allowedWarehouseIds, warehouseId]);
+
+  useEffect(() => {
+    if (!allowedWarehouseIds) return;
+    if (warehouseId !== effectiveWarehouseId) {
+      setWarehouseId(effectiveWarehouseId);
+      resetPage();
+    }
+  }, [allowedWarehouseIds, warehouseId, effectiveWarehouseId, resetPage]);
+
   const fetchProductSuggestions = useMemo(
-    () => createAdminInventoryProductSuggestions(warehouseId || undefined),
-    [warehouseId]
+    () =>
+      createAdminInventoryProductSuggestions(
+        effectiveWarehouseId || undefined
+      ),
+    [effectiveWarehouseId]
   );
+
+  useEffect(() => {
+    if (activeTab === "stock") {
+      if (!STOCK_SORT_OPTIONS.some((o) => o.value === sortBy)) {
+        setSortBy("updatedAt");
+        setSortOrder("desc");
+      }
+    } else if (activeTab === "movements") {
+      if (!MOVEMENT_SORT_OPTIONS.some((o) => o.value === sortBy)) {
+        setSortBy("createdAt");
+        setSortOrder("desc");
+      }
+    } else if (!LOW_STOCK_SORT_OPTIONS.some((o) => o.value === sortBy)) {
+      setSortBy("quantity");
+      setSortOrder("asc");
+    }
+  }, [activeTab, sortBy]);
 
   useEffect(() => {
     setFilterError("");
@@ -243,9 +315,39 @@ function CheckStockPageContent() {
   }, []);
 
   const load = useCallback(async () => {
+    if (allowedTabs.length === 0) {
+      setLoading(false);
+      setError("You do not have permission to view Check Stock tabs.");
+      return;
+    }
+    if (allowedWarehouseIds && allowedWarehouseIds.size === 0) {
+      setLoading(false);
+      setError("No warehouse is granted for this Check Stock tab.");
+      setStock(null);
+      setMovements([]);
+      setLowStock(null);
+      setPagination(null);
+      return;
+    }
+    // Wait until warehouse filter matches this tab (avoids Goregaon→Vasai race).
+    if (
+      allowedWarehouseIds &&
+      warehouseId &&
+      !allowedWarehouseIds.has(warehouseId)
+    ) {
+      return;
+    }
+    const sortValid =
+      activeTab === "stock"
+        ? STOCK_SORT_OPTIONS.some((o) => o.value === sortBy)
+        : activeTab === "movements"
+          ? MOVEMENT_SORT_OPTIONS.some((o) => o.value === sortBy)
+          : LOW_STOCK_SORT_OPTIONS.some((o) => o.value === sortBy);
+    if (!sortValid) return;
     setLoading(true);
     setError("");
     try {
+      const scopedWarehouseId = effectiveWarehouseId;
       const base = {
         page,
         limit,
@@ -253,18 +355,18 @@ function CheckStockPageContent() {
         sortOrder,
         includeZero: true,
         ...(search.trim() ? { search: search.trim() } : {}),
-        ...(warehouseId ? { warehouseId } : {}),
+        ...(scopedWarehouseId ? { warehouseId: scopedWarehouseId } : {}),
         ...(brandId ? { brandId } : {}),
       };
 
-      if (tab === "stock") {
+      if (activeTab === "stock") {
         const result = await api.inventory.stock(base);
         setStock(result.data);
         setPagination(result.pagination);
-      } else if (tab === "movements") {
+      } else if (activeTab === "movements") {
         const result = await api.inventory.movements({
           ...base,
-          ...(movementType ? { type: movementType } : {}),
+          ...(movementType ? { kind: movementType } : {}),
         });
         setMovements(result.items);
         setPagination(result.pagination);
@@ -282,7 +384,20 @@ function CheckStockPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [tab, warehouseId, brandId, movementType, search, page, limit, sortBy, sortOrder]);
+  }, [
+    allowedTabs.length,
+    allowedWarehouseIds,
+    activeTab,
+    warehouseId,
+    effectiveWarehouseId,
+    brandId,
+    movementType,
+    search,
+    page,
+    limit,
+    sortBy,
+    sortOrder,
+  ]);
 
   useEffect(() => {
     load();
@@ -296,6 +411,20 @@ function CheckStockPageContent() {
   function handleTabChange(next: Tab) {
     setTab(next);
     resetPage();
+
+    if (!canBrowseAllTabs) {
+      const code =
+        next === "stock"
+          ? Permission.STOCK_VIEW
+          : next === "movements"
+            ? Permission.STOCK_MOVEMENTS
+            : Permission.STOCK_LOW;
+      const allowed = warehousesFor(code);
+      if (!warehouseId || !allowed.includes(warehouseId)) {
+        setWarehouseId(allowed.length === 1 ? allowed[0]! : "");
+      }
+    }
+
     if (next === "stock") {
       setSortBy("updatedAt");
       setSortOrder("desc");
@@ -309,16 +438,16 @@ function CheckStockPageContent() {
   }
 
   const sortOptions =
-    tab === "stock"
+    activeTab === "stock"
       ? STOCK_SORT_OPTIONS
-      : tab === "movements"
+      : activeTab === "movements"
         ? MOVEMENT_SORT_OPTIONS
         : LOW_STOCK_SORT_OPTIONS;
 
   function buildPdfFilters(): CheckStockPdfFilters {
     return {
-      tab,
-      tabLabel: TAB_LABELS[tab],
+      tab: activeTab,
+      tabLabel: TAB_LABELS[activeTab],
       warehouseName: warehouses.find((w) => w.id === warehouseId)?.name,
       brandName: brands.find((b) => b.id === brandId)?.name,
       search: search.trim() || undefined,
@@ -342,16 +471,16 @@ function CheckStockPageContent() {
       };
       const filters = buildPdfFilters();
 
-      if (tab === "stock") {
+      if (activeTab === "stock") {
         const data = await fetchAllStockForPdf(base);
         printCurrentStockReport(data, {
           filters,
           showTotalColumn: !warehouseId,
         });
-      } else if (tab === "movements") {
+      } else if (activeTab === "movements") {
         const items = await fetchAllMovementsForPdf({
           ...base,
-          ...(movementType ? { type: movementType } : {}),
+          ...(movementType ? { kind: movementType } : {}),
         });
         printMovementsReport(items, filters);
       } else {
@@ -379,28 +508,32 @@ function CheckStockPageContent() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {(
-          [
-            ["stock", "Current stock"],
-            ["movements", "Movements"],
-            ["low-stock", "Low stock"],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => handleTabChange(key)}
-            className={`min-h-14 rounded-2xl border-2 px-5 py-3.5 text-base font-bold transition active:scale-[0.98] ${
-              tab === key
-                ? "border-orange-600 bg-orange-600 text-white shadow-md shadow-orange-900/20"
-                : "border-stone-200 bg-white text-stone-700 hover:border-orange-300 hover:bg-orange-50"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {allowedTabs.length > 0 ? (
+        <div
+          className={`grid gap-3 ${
+            allowedTabs.length === 1
+              ? "grid-cols-1"
+              : allowedTabs.length === 2
+                ? "grid-cols-2"
+                : "grid-cols-2 sm:grid-cols-3"
+          }`}
+        >
+          {allowedTabs.map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => handleTabChange(key)}
+              className={`min-h-14 rounded-2xl border-2 px-5 py-3.5 text-base font-bold transition active:scale-[0.98] ${
+                activeTab === key
+                  ? "border-orange-600 bg-orange-600 text-white shadow-md shadow-orange-900/20"
+                  : "border-stone-200 bg-white text-stone-700 hover:border-orange-300 hover:bg-orange-50"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="space-y-4 rounded-xl border border-zinc-200/80 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
@@ -428,20 +561,27 @@ function CheckStockPageContent() {
             value={warehouseId}
             onChange={(v) => handleFilterChange(setWarehouseId, v)}
             options={[
-              { value: "", label: "All" },
-              ...warehouses.map((w) => ({ value: w.id, label: w.name })),
+              ...(warehouseFilterOptions.length > 1
+                ? [{ value: "", label: "All" }]
+                : []),
+              ...warehouseFilterOptions.map((w) => ({
+                value: w.id,
+                label: w.name,
+              })),
             ]}
           />
-          {tab === "movements" ? (
+          {activeTab === "movements" ? (
             <FilterSelect
               label="Type"
-              className="w-full shrink-0 lg:w-auto lg:min-w-[10rem]"
+              className="w-full shrink-0 lg:w-auto lg:min-w-[12rem]"
               value={movementType}
               onChange={(v) => handleFilterChange(setMovementType, v)}
               options={[
                 { value: "", label: "All" },
-                { value: "STOCK_IN", label: "Stock In" },
-                { value: "STOCK_OUT", label: "Stock Out" },
+                ...MOVEMENT_FILTER_KINDS.map((k) => ({
+                  value: k.value,
+                  label: k.label,
+                })),
               ]}
             />
           ) : null}
@@ -483,7 +623,7 @@ function CheckStockPageContent() {
               { value: "desc", label: "Descending" },
             ]}
           />
-          {tab === "low-stock" ? (
+          {activeTab === "low-stock" ? (
             <div className="flex min-w-[12rem] flex-col gap-1">
               <span className="text-xs font-medium text-zinc-500">Quantities in</span>
               <ThresholdUnitToggle
@@ -524,7 +664,7 @@ function CheckStockPageContent() {
         <div className="flex justify-center py-12">
           <LoadingSpinner />
         </div>
-      ) : tab === "stock" && stock ? (
+      ) : activeTab === "stock" && stock ? (
         <StockView
           data={stock}
           showTotalColumn={!warehouseId}
@@ -534,9 +674,9 @@ function CheckStockPageContent() {
           }}
           onError={(msg) => setError(msg)}
         />
-      ) : tab === "movements" ? (
+      ) : activeTab === "movements" ? (
         <MovementsView movements={movements} />
-      ) : tab === "low-stock" ? (
+      ) : activeTab === "low-stock" ? (
         <LowStockView
           data={
             lowStock ?? {
@@ -714,12 +854,10 @@ function StockView({
   onError: (message: string) => void;
 }) {
   const routes = useCheckStockRoutes();
-  const { can, canAny } = usePermissions();
+  const { can, isAdmin } = usePermissions();
+  const showActionsColumn = isAdmin || can(Permission.STOCK_ACTIONS);
   const showAdjustActions = can(Permission.INVENTORY_ADJUST);
-  const showReturnActions = canAny([
-    Permission.RETURNS_CLIENT,
-    Permission.RETURNS_WAREHOUSE,
-  ]);
+  const showReturnActions = can(Permission.RETURNS_CLIENT);
   const [editing, setEditing] = useState<StockRow | null>(null);
   const warehouseColumns = data.warehouses?.length
     ? data.warehouses
@@ -764,16 +902,22 @@ function StockView({
                     </th>
                   </Fragment>
                 ))}
-                <th className="sticky right-0 z-10 whitespace-nowrap bg-orange-50 px-4 py-3.5 text-right align-bottom">
-                  Actions
-                </th>
+                {showActionsColumn ? (
+                  <th className="sticky right-0 z-10 whitespace-nowrap bg-orange-50 px-4 py-3.5 text-right align-bottom">
+                    Actions
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
               {products.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={warehouseColumns.length * 2 + (showTotalColumn ? 3 : 2)}
+                    colSpan={
+                      warehouseColumns.length * 2 +
+                      (showTotalColumn ? 2 : 1) +
+                      (showActionsColumn ? 1 : 0)
+                    }
                     className="px-5 py-10 text-center text-base font-medium text-stone-400"
                   >
                     No products found
@@ -842,6 +986,7 @@ function StockView({
                           </Fragment>
                         );
                       })}
+                      {showActionsColumn ? (
                       <td className="sticky right-0 z-10 w-px bg-inherit px-4 py-3.5 align-top">
                         <div className="flex flex-col items-stretch gap-2">
                           {showReturnActions ? (
@@ -896,6 +1041,7 @@ function StockView({
                           })}
                         </div>
                       </td>
+                      ) : null}
                     </tr>
                   );
                 })
@@ -1005,6 +1151,7 @@ function StockView({
                           baseUnit={product.baseUnit}
                           />
                           <div className="flex items-center gap-1.5">
+                            {showActionsColumn ? (
                             <ButtonLink
                               href={routes.inventoryItem(
                                 wh.warehouseId,
@@ -1016,7 +1163,8 @@ function StockView({
                             >
                               History
                             </ButtonLink>
-                            {stockRow && showAdjustActions ? (
+                            ) : null}
+                            {showActionsColumn && stockRow && showAdjustActions ? (
                               <Button
                                 type="button"
                                 variant="outline"
@@ -1044,7 +1192,7 @@ function StockView({
                         })
                       : "—"}
                   </span>
-                  {showReturnActions ? (
+                  {showActionsColumn && showReturnActions ? (
                   <ButtonLink
                     href={`${routes.returnPath}?warehouseId=${encodeURIComponent(detailLinkLocation?.warehouseId ?? "")}`}
                     variant="outline"

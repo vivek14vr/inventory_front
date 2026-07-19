@@ -6,7 +6,6 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { Permission } from "@/lib/auth/permissions";
 import { AUTH_ROUTES } from "@/lib/auth/constants";
 import {
-  canViewPendingTransfers,
   canViewStockDashboard,
   getPrimaryWarehouseId,
   getWarehouseLabel,
@@ -30,22 +29,63 @@ const routes = {
   stockOut: AUTH_ROUTES.appStockOut,
   inventory: AUTH_ROUTES.appInventory,
   transfer: AUTH_ROUTES.appTransfer,
+  transfers: AUTH_ROUTES.appTransfers,
   returns: AUTH_ROUTES.appReturn,
+  reports: AUTH_ROUTES.appReports,
+  products: AUTH_ROUTES.appProducts,
+  invoices: AUTH_ROUTES.appInvoices,
+  checklists: AUTH_ROUTES.appChecklists,
 };
 
 export default function AppDashboardPage() {
   const { user, loading: authLoading } = useAuth();
-  const { can } = usePermissions();
+  const { can, canAny, warehousesFor } = usePermissions();
+  const canStockIn = can(Permission.STOCK_IN);
+  const canStockOut = can(Permission.STOCK_OUT);
+  const canCheckStock = canAny([
+    Permission.STOCK_VIEW,
+    Permission.STOCK_MOVEMENTS,
+    Permission.STOCK_LOW,
+    Permission.INVENTORY_VIEW,
+  ]);
+  const canSendStock = canAny([
+    Permission.TRANSFERS_VIEW,
+    Permission.TRANSFERS_RECEIVE,
+  ]);
+  const canTransferHistory = can(Permission.TRANSFERS_MANAGE);
+  const canReturns = can(Permission.RETURNS_CLIENT);
+  const canReports = can(Permission.REPORTS_VIEW);
+  const canProducts = canAny([Permission.PRODUCTS_VIEW, Permission.PRODUCTS_MANAGE]);
+  const canInvoices = canAny([
+    Permission.INVENTORY_VIEW,
+    Permission.INVENTORY_ADJUST,
+  ]);
   const canImport = can(Permission.IMPORTS_MANAGE);
+  const canChecklists = canAny([
+    Permission.CHECKLISTS_COMPLETE,
+    Permission.CHECKLISTS_MANAGE,
+  ]);
+  const showActionGrid =
+    canStockIn ||
+    canStockOut ||
+    canCheckStock ||
+    canSendStock ||
+    canTransferHistory ||
+    canReturns ||
+    canReports ||
+    canProducts ||
+    canInvoices;
+
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [pendingTransfers, setPendingTransfers] = useState<PendingTransfer[]>([]);
+  const [checklistPending, setChecklistPending] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   const warehouseId = getPrimaryWarehouseId(user);
-  const showStock = canViewStockDashboard(user);
-  const showTransfers = canViewPendingTransfers(user);
-  const showReturns = showStock || showTransfers;
+  const showStock = canViewStockDashboard(user) || canCheckStock;
+  /** Pending inbound transfers belong on Send Stock — not Stock In / Transfer List-only. */
+  const showPendingTransfers = canSendStock;
 
   const load = useCallback(async () => {
     if (authLoading) return;
@@ -53,12 +93,15 @@ export default function AppDashboardPage() {
     setLoading(true);
     setError("");
 
-    if (!showStock && !showTransfers) {
+    if (!showStock && !showPendingTransfers && !canChecklists) {
       setBalances([]);
       setPendingTransfers([]);
+      setChecklistPending(0);
       setLoading(false);
       return;
     }
+
+    const errors: string[] = [];
 
     try {
       const tasks: Promise<void>[] = [];
@@ -72,22 +115,63 @@ export default function AppDashboardPage() {
               ...(warehouseId ? { warehouseId } : {}),
             })
             .then((b) => setBalances(b.items))
+            .catch((err) => {
+              setBalances([]);
+              errors.push(
+                err instanceof ApiError ? err.message : "Failed to load stock"
+              );
+            })
         );
       } else {
         setBalances([]);
       }
 
-      if (showTransfers) {
+      if (showPendingTransfers) {
+        const allowed = new Set([
+          ...warehousesFor(Permission.TRANSFERS_RECEIVE),
+          ...warehousesFor(Permission.TRANSFERS_VIEW),
+        ]);
+        const pendingWarehouseId =
+          warehouseId && allowed.has(warehouseId) ? warehouseId : undefined;
+
         tasks.push(
           api.transfers
-            .pending(warehouseId)
+            .pending(pendingWarehouseId)
             .then((t) => setPendingTransfers(t))
+            .catch((err) => {
+              setPendingTransfers([]);
+              errors.push(
+                err instanceof ApiError
+                  ? err.message
+                  : "Failed to load pending transfers"
+              );
+            })
         );
       } else {
         setPendingTransfers([]);
       }
 
+      if (canChecklists) {
+        tasks.push(
+          api.checklists
+            .today()
+            .then((items) => {
+              const pending = items.reduce(
+                (sum, c) => sum + Math.max(0, c.totalCount - c.completedCount),
+                0
+              );
+              setChecklistPending(pending);
+            })
+            .catch(() => {
+              setChecklistPending(0);
+            })
+        );
+      } else {
+        setChecklistPending(0);
+      }
+
       await Promise.all(tasks);
+      if (errors.length) setError(errors[0]!);
     } catch (err) {
       const message =
         err instanceof ApiError
@@ -98,10 +182,18 @@ export default function AppDashboardPage() {
       setError(message);
       setBalances([]);
       setPendingTransfers([]);
+      setChecklistPending(0);
     } finally {
       setLoading(false);
     }
-  }, [authLoading, showStock, showTransfers, warehouseId]);
+  }, [
+    authLoading,
+    showStock,
+    showPendingTransfers,
+    canChecklists,
+    warehouseId,
+    warehousesFor,
+  ]);
 
   useEffect(() => {
     void load();
@@ -141,14 +233,18 @@ export default function AppDashboardPage() {
         <div className="flex justify-center py-12">
           <LoadingSpinner label="Loading…" />
         </div>
-      ) : !showStock && !showTransfers && !canImport ? (
+      ) : !showStock &&
+        !showPendingTransfers &&
+        !canImport &&
+        !showActionGrid &&
+        !canChecklists ? (
         <EmptyState
           title="Dashboard access only"
-          description="You can open other sections from the menu. Stock and transfer stats need stock or transfer permissions."
+          description="You can open other sections from the menu. Ask an admin to grant stock, transfer, or other module access."
         />
       ) : (
         <>
-          {(showStock || showTransfers) && (
+          {(showStock || showPendingTransfers || canChecklists) && (
           <div className="grid gap-4 sm:grid-cols-3">
             {showStock && (
               <>
@@ -156,54 +252,58 @@ export default function AppDashboardPage() {
                 <StatCard label="Total quantity" value={totalQty.toLocaleString()} />
               </>
             )}
-            {showTransfers && (
+            {showPendingTransfers && (
               <StatCard
                 label="Pending transfers"
                 value={pendingTransfers.length}
                 variant={pendingTransfers.length > 0 ? "warning" : "default"}
                 hint={
                   pendingTransfers.length > 0
-                    ? "Ready to receive via Stock In"
+                    ? "Open Send Stock to receive"
                     : undefined
+                }
+              />
+            )}
+            {canChecklists && (
+              <StatCard
+                label="Checklist tasks left"
+                value={checklistPending}
+                variant={checklistPending > 0 ? "warning" : "default"}
+                hint={
+                  checklistPending > 0
+                    ? "Open Daily Checklist below"
+                    : "You’re caught up for today"
                 }
               />
             )}
           </div>
           )}
 
-          {(showStock || showTransfers || showReturns) && (
+          {showActionGrid && (
           <section>
             <h2 className="mb-4 text-lg font-bold text-stone-800">What do you want to do?</h2>
-            <div className="grid gap-4 grid-cols-2 sm:grid-cols-3">
-              {showStock && (
-                <>
-                  <QuickActionCard
-                    href={routes.stockIn}
-                    title="Stock In"
-                    description="Add stock"
-                    iconLabel="Stock In"
-                    size="large"
-                    color="orange"
-                  />
-                  <QuickActionCard
-                    href={routes.stockOut}
-                    title="Stock Out"
-                    description="Sell to client"
-                    iconLabel="Stock Out"
-                    size="large"
-                    color="orange"
-                  />
-                  <QuickActionCard
-                    href={routes.inventory}
-                    title="Check Stock"
-                    description="See your stock"
-                    iconLabel="Check Stock"
-                    size="large"
-                    color="sky"
-                  />
-                </>
-              )}
-              {showTransfers && (
+            <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+              {canStockIn ? (
+                <QuickActionCard
+                  href={routes.stockIn}
+                  title="Stock In"
+                  description="Add stock"
+                  iconLabel="Stock In"
+                  size="large"
+                  color="orange"
+                />
+              ) : null}
+              {canStockOut ? (
+                <QuickActionCard
+                  href={routes.stockOut}
+                  title="Stock Out"
+                  description="Sell to client"
+                  iconLabel="Stock Out"
+                  size="large"
+                  color="orange"
+                />
+              ) : null}
+              {canSendStock ? (
                 <QuickActionCard
                   href={routes.transfer}
                   title="Send Stock"
@@ -217,19 +317,94 @@ export default function AppDashboardPage() {
                       : undefined
                   }
                 />
-              )}
-              {showReturns && (
+              ) : null}
+              {canCheckStock ? (
+                <QuickActionCard
+                  href={routes.inventory}
+                  title="Check Stock"
+                  description="See your stock"
+                  iconLabel="Check Stock"
+                  size="large"
+                  color="sky"
+                />
+              ) : null}
+              {canReports ? (
+                <QuickActionCard
+                  href={routes.reports}
+                  title="Download Reports"
+                  description="Export stock & sales"
+                  iconLabel="Reports"
+                  size="large"
+                  color="teal"
+                />
+              ) : null}
+              {canTransferHistory ? (
+                <QuickActionCard
+                  href={routes.transfers}
+                  title="Transfer List"
+                  description="View all transfers"
+                  iconLabel="Transfer List"
+                  size="large"
+                  color="violet"
+                />
+              ) : null}
+              {canProducts ? (
+                <QuickActionCard
+                  href={routes.products}
+                  title="Products"
+                  description="Add or edit products"
+                  iconLabel="Products"
+                  size="large"
+                  color="rose"
+                />
+              ) : null}
+              {canReturns ? (
                 <QuickActionCard
                   href={routes.returns}
                   title="Return"
-                  description="From client or warehouse"
+                  description="Client invoice returns"
                   iconLabel="Return"
                   size="large"
                   color="emerald"
                 />
-              )}
+              ) : null}
+              {canInvoices ? (
+                <QuickActionCard
+                  href={routes.invoices}
+                  title="Invoices"
+                  description="Fix client & invoice numbers"
+                  iconLabel="Invoices"
+                  size="large"
+                  color="indigo"
+                />
+              ) : null}
             </div>
           </section>
+          )}
+
+          {canChecklists && (
+            <section>
+              <h2 className="mb-4 text-lg font-bold text-stone-800">
+                Daily checklist
+              </h2>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:max-w-4xl">
+                <QuickActionCard
+                  href={routes.checklists}
+                  title="Open today’s checklist"
+                  description={
+                    checklistPending > 0
+                      ? `${checklistPending} task${checklistPending === 1 ? "" : "s"} still open`
+                      : "Review and complete assigned tasks"
+                  }
+                  iconLabel="Daily Checklists"
+                  size="large"
+                  color="emerald"
+                  badge={
+                    checklistPending > 0 ? String(checklistPending) : undefined
+                  }
+                />
+              </div>
+            </section>
           )}
 
           {canImport && (
@@ -302,7 +477,11 @@ export default function AppDashboardPage() {
             <EmptyState
               title="No inventory yet"
               description="Record your first Stock In to start tracking balances."
-              action={<ButtonLink href={routes.stockIn}>Stock in</ButtonLink>}
+              action={
+                canStockIn ? (
+                  <ButtonLink href={routes.stockIn}>Stock in</ButtonLink>
+                ) : undefined
+              }
             />
           )}
         </>

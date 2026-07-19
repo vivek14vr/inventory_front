@@ -18,8 +18,18 @@ export function resolveWarehouseId(
   defaultWarehouseId: string,
   allowedWarehouseIds?: string[]
 ): string {
-  if (warehouseId) return warehouseId;
-  if (defaultWarehouseId) return defaultWarehouseId;
+  const allowed =
+    allowedWarehouseIds && allowedWarehouseIds.length > 0
+      ? new Set(allowedWarehouseIds)
+      : null;
+
+  if (warehouseId && (!allowed || allowed.has(warehouseId))) {
+    return warehouseId;
+  }
+  if (defaultWarehouseId && (!allowed || allowed.has(defaultWarehouseId))) {
+    return defaultWarehouseId;
+  }
   if (allowedWarehouseIds?.length === 1) return allowedWarehouseIds[0];
+  if (allowedWarehouseIds?.length) return allowedWarehouseIds[0] ?? "";
   return "";
 }
