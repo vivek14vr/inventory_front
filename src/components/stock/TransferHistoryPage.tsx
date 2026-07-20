@@ -71,9 +71,6 @@ function transferRecordToPending(t: TransferRecord): PendingTransfer {
 export function TransferHistoryPage() {
   const { can, isAdmin, warehousesFor } = usePermissions();
   const canManageHistory = isAdmin || can(Permission.TRANSFERS_MANAGE);
-  const canReceiveTransfers = canManageHistory;
-  const canReturnTransfers = canManageHistory;
-  const canManageTransfers = canManageHistory;
   const showActionsColumn = canManageHistory;
 
   const managedWarehouseIds = useMemo(
@@ -90,23 +87,34 @@ export function TransferHistoryPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [status, setStatus] = useState("");
+  const [sourceId, setSourceId] = useState("");
   const [destId, setDestId] = useState("");
   const [sortBy, setSortBy] = useState<SortField>("status");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [pagination, setPagination] = useState<PaginationMeta | null>(null);
   const { page, setPage, limit, setLimit, resetPage } = usePagination(20);
 
-  const destinationWarehouseOptions = useMemo(() => {
-    const active = warehouses.filter((w) => w.isActive);
-    if (!managedWarehouseIds) return active;
-    return active.filter((w) => managedWarehouseIds.has(w.id));
-  }, [warehouses, managedWarehouseIds]);
+  const warehouseOptions = useMemo(
+    () => warehouses.filter((w) => w.isActive),
+    [warehouses]
+  );
 
-  function canActOnTransfer(t: TransferRecord): boolean {
+  function canReceiveAt(t: TransferRecord): boolean {
+    if (isAdmin) return true;
+    return Boolean(managedWarehouseIds?.has(t.destinationWarehouse.id));
+  }
+
+  function canCancelAt(t: TransferRecord): boolean {
     if (isAdmin) return true;
     return Boolean(
-      managedWarehouseIds?.has(t.destinationWarehouse.id)
+      managedWarehouseIds?.has(t.destinationWarehouse.id) ||
+        managedWarehouseIds?.has(t.sourceWarehouse.id)
     );
+  }
+
+  function canReturnAt(t: TransferRecord): boolean {
+    if (isAdmin) return true;
+    return Boolean(managedWarehouseIds?.has(t.destinationWarehouse.id));
   }
 
   const load = useCallback(async () => {
@@ -120,6 +128,7 @@ export function TransferHistoryPage() {
           sortBy,
           sortOrder,
           ...(status ? { status } : {}),
+          ...(sourceId ? { sourceWarehouseId: sourceId } : {}),
           ...(destId ? { destinationWarehouseId: destId } : {}),
         }),
         api.warehouses.list(),
@@ -132,23 +141,8 @@ export function TransferHistoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [status, destId, page, limit, sortBy, sortOrder]);
+  }, [status, sourceId, destId, page, limit, sortBy, sortOrder]);
 
-  useEffect(() => {
-    if (!managedWarehouseIds) return;
-    if (destId && !managedWarehouseIds.has(destId)) {
-      setDestId(
-        managedWarehouseIds.size === 1
-          ? [...managedWarehouseIds][0]!
-          : ""
-      );
-      resetPage();
-      return;
-    }
-    if (!destId && managedWarehouseIds.size === 1) {
-      setDestId([...managedWarehouseIds][0]!);
-    }
-  }, [managedWarehouseIds, destId, resetPage]);
   function handleSort(field: SortField) {
     if (sortBy === field) {
       setSortOrder((o) => (o === "asc" ? "desc" : "asc"));
@@ -205,6 +199,9 @@ export function TransferHistoryPage() {
         </Button>
         <StockInForm
           transfer={receiving}
+          allowedWarehouseIds={
+            managedWarehouseIds ? [...managedWarehouseIds] : undefined
+          }
           onSuccess={() => {
             setReceiving(null);
             load();
@@ -218,7 +215,7 @@ export function TransferHistoryPage() {
     <div className="space-y-6 text-zinc-900">
       <PageHeader
         title="Transfer history"
-        description="Transfers arriving at warehouses you manage. Receive inbound stock here; create outbound sends from Send Stock."
+        description="Browse all transfers. Receive, return, or cancel only at warehouses you manage."
       />
 
       <div className="flex flex-wrap gap-3 rounded-xl border border-zinc-200/80 bg-white p-4 shadow-sm">
@@ -238,6 +235,21 @@ export function TransferHistoryPage() {
           ]}
         />
         <FilterSelect
+          label="From warehouse"
+          value={sourceId}
+          onChange={(v) => {
+            setSourceId(v);
+            resetPage();
+          }}
+          options={[
+            { value: "", label: "All sources" },
+            ...warehouseOptions.map((w) => ({
+              value: w.id,
+              label: w.name,
+            })),
+          ]}
+        />
+        <FilterSelect
           label="To warehouse"
           value={destId}
           onChange={(v) => {
@@ -245,10 +257,8 @@ export function TransferHistoryPage() {
             resetPage();
           }}
           options={[
-            ...(destinationWarehouseOptions.length > 1
-              ? [{ value: "", label: "All destinations" }]
-              : []),
-            ...destinationWarehouseOptions.map((w) => ({
+            { value: "", label: "All destinations" },
+            ...warehouseOptions.map((w) => ({
               value: w.id,
               label: w.name,
             })),
@@ -379,31 +389,25 @@ export function TransferHistoryPage() {
                     </DataTableTd>
                     {showActionsColumn ? (
                     <DataTableTd align="right" className="!pr-4">
-                      {!canActOnTransfer(t) ? (
-                        <span className="text-xs text-zinc-400">No actions</span>
-                      ) : t.status === "PENDING" ? (
+                      {t.status === "PENDING" ? (
                         <div className="inline-flex flex-nowrap items-center justify-end gap-1.5">
-                          {canReceiveTransfers ? (
+                          {canReceiveAt(t) ? (
                           <Button
                             type="button"
                             variant="primary"
                             size="sm"
                             disabled={updatingId !== null}
-                            onClick={() => {
-                              if (canManageTransfers) {
-                                setPendingAction({
-                                  transfer: t,
-                                  action: "RECEIVE_PENDING",
-                                });
-                              } else {
-                                setReceiving(transferRecordToPending(t));
-                              }
-                            }}
+                            onClick={() =>
+                              setPendingAction({
+                                transfer: t,
+                                action: "RECEIVE_PENDING",
+                              })
+                            }
                           >
                             Receive
                           </Button>
                           ) : null}
-                          {canManageTransfers ? (
+                          {canCancelAt(t) ? (
                           <Button
                             type="button"
                             variant="danger"
@@ -419,11 +423,11 @@ export function TransferHistoryPage() {
                             Cancel
                           </Button>
                           ) : null}
-                          {!canReceiveTransfers && !canManageTransfers ? (
+                          {!canReceiveAt(t) && !canCancelAt(t) ? (
                             <span className="text-xs text-zinc-400">No actions</span>
                           ) : null}
                         </div>
-                      ) : t.status === "RECEIVED" && canReturnTransfers ? (
+                      ) : t.status === "RECEIVED" && canReturnAt(t) ? (
                         <Button
                           type="button"
                           variant="danger"

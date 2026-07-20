@@ -29,8 +29,8 @@ export function TransferPanel({
 }: TransferPanelProps) {
   const { can, isAdmin, warehousesFor } = usePermissions();
   const canCreate = isAdmin || can(Permission.TRANSFERS_VIEW);
-  const canReceive =
-    isAdmin || can(Permission.TRANSFERS_RECEIVE) || can(Permission.TRANSFERS_MANAGE);
+  // Send Stock → Receive Incoming is transfers.receive only (not Transfer History manage).
+  const canReceive = isAdmin || can(Permission.TRANSFERS_RECEIVE);
 
   /** Source sites for Send — Create transfer only (not Stock Out / Receive). */
   const createWarehouseIds = useMemo(() => {
@@ -51,10 +51,10 @@ export function TransferPanel({
 
   const createRequireWarehouse = isAdmin || createWarehouseIds.length !== 1;
 
-  const receiveWarehouseIds = useMemo(
-    () => (isAdmin ? [] : warehousesFor(Permission.TRANSFERS_RECEIVE)),
-    [isAdmin, warehousesFor]
-  );
+  const receiveWarehouseIds = useMemo(() => {
+    if (isAdmin) return [];
+    return warehousesFor(Permission.TRANSFERS_RECEIVE);
+  }, [isAdmin, warehousesFor]);
 
   const receiveRequireWarehouse = isAdmin || receiveWarehouseIds.length !== 1;
 
@@ -87,20 +87,57 @@ export function TransferPanel({
     return "receive";
   }, [tab, canCreate, canReceive]);
 
+  const receiveFilterOptions = useMemo(() => {
+    const active = warehouses.filter((w) => w.isActive);
+    if (isAdmin) return active;
+    return active.filter((w) => receiveWarehouseIds.includes(w.id));
+  }, [warehouses, isAdmin, receiveWarehouseIds]);
+
   const load = useCallback(
     async (whId = filterWarehouseId) => {
       setLoading(true);
       setError("");
       try {
-        setTransfers(await api.transfers.pending(whId || undefined));
+        let requestWh = whId || undefined;
+        if (!isAdmin && !requestWh && receiveWarehouseIds.length === 1) {
+          requestWh = receiveWarehouseIds[0];
+        }
+        if (
+          !isAdmin &&
+          requestWh &&
+          receiveWarehouseIds.length > 0 &&
+          !receiveWarehouseIds.includes(requestWh)
+        ) {
+          setTransfers([]);
+          setError("You do not have receive access for that warehouse");
+          return;
+        }
+        const items = await api.transfers.pending(requestWh);
+        // Defense in depth: never show receive cards for other destinations.
+        const scoped = isAdmin
+          ? items
+          : items.filter((t) =>
+              Boolean(
+                t.destinationWarehouse?.id &&
+                  receiveWarehouseIds.includes(t.destinationWarehouse.id)
+              )
+            );
+        setTransfers(scoped);
       } catch (err) {
         setError(err instanceof ApiError ? err.message : "Failed to load transfers");
+        setTransfers([]);
       } finally {
         setLoading(false);
       }
     },
-    [filterWarehouseId]
+    [filterWarehouseId, isAdmin, receiveWarehouseIds]
   );
+
+  function canReceiveAtDestination(t: PendingTransfer): boolean {
+    if (isAdmin) return true;
+    const destId = t.destinationWarehouse?.id;
+    return Boolean(destId && receiveWarehouseIds.includes(destId));
+  }
 
   function openReceiveTab() {
     if (!canReceive) return;
@@ -109,7 +146,7 @@ export function TransferPanel({
   }
 
   useEffect(() => {
-    if (!showDestinationFilter) return;
+    if (!showDestinationFilter && !canReceive) return;
     api.warehouses
       .list()
       .then(setWarehouses)
@@ -117,7 +154,20 @@ export function TransferPanel({
         setWarehouses([]);
         setError(err instanceof ApiError ? err.message : "Could not load warehouses");
       });
-  }, [showDestinationFilter]);
+  }, [showDestinationFilter, canReceive]);
+
+  useEffect(() => {
+    if (!isAdmin && filterWarehouseId && receiveWarehouseIds.length > 0) {
+      if (!receiveWarehouseIds.includes(filterWarehouseId)) {
+        setFilterWarehouseId(receiveDefaultWarehouseId);
+      }
+    }
+  }, [
+    isAdmin,
+    filterWarehouseId,
+    receiveWarehouseIds,
+    receiveDefaultWarehouseId,
+  ]);
 
   useEffect(() => {
     if (activeTab === "receive" && canReceive) {
@@ -164,10 +214,10 @@ export function TransferPanel({
         </div>
       ) : canReceive ? (
         <>
-          {showDestinationFilter && (
+          {(showDestinationFilter || receiveFilterOptions.length > 1) && (
             <div className="rounded-2xl border-2 border-stone-200 bg-white p-5">
               <ButtonSelect
-                label="Filter by destination"
+                label="Receive at warehouse"
                 value={filterWarehouseId}
                 onChange={(v) => {
                   setFilterWarehouseId(v);
@@ -175,14 +225,18 @@ export function TransferPanel({
                 }}
                 size="sm"
                 options={[
-                  { value: "", label: "All" },
-                  ...warehouses
-                    .filter((w) => w.isActive)
-                    .map((w) => ({ value: w.id, label: w.name, sublabel: w.code })),
+                  ...(isAdmin || receiveFilterOptions.length > 1
+                    ? [{ value: "", label: "All allowed" }]
+                    : []),
+                  ...receiveFilterOptions.map((w) => ({
+                    value: w.id,
+                    label: w.name,
+                    sublabel: w.code,
+                  })),
                 ]}
               />
               <p className="mt-2 text-xs text-stone-500">
-                Showing all pending transfers unless a destination is selected.
+                Only warehouses you can receive at are listed.
               </p>
             </div>
           )}
@@ -199,18 +253,27 @@ export function TransferPanel({
               >
                 ← Back to list
               </Button>
-              <StockInForm
-                requireWarehouse={receiveRequireWarehouse}
-                transfer={receiving}
-                defaultWarehouseId={receiveDefaultWarehouseId}
-                allowedWarehouseIds={
-                  receiveWarehouseIds.length ? receiveWarehouseIds : undefined
-                }
-                onSuccess={() => {
-                  setReceiving(null);
-                  load();
-                }}
-              />
+              {canReceiveAtDestination(receiving) ? (
+                <StockInForm
+                  requireWarehouse={receiveRequireWarehouse}
+                  transfer={receiving}
+                  defaultWarehouseId={
+                    receiving.destinationWarehouse?.id ||
+                    receiveDefaultWarehouseId
+                  }
+                  allowedWarehouseIds={
+                    receiveWarehouseIds.length
+                      ? receiveWarehouseIds
+                      : undefined
+                  }
+                  onSuccess={() => {
+                    setReceiving(null);
+                    load();
+                  }}
+                />
+              ) : (
+                <Alert message="You do not have permission to receive at this warehouse." />
+              )}
             </div>
           ) : loading ? (
             <div className="flex justify-center py-12">
