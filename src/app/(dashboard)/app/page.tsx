@@ -60,7 +60,13 @@ export default function AppDashboardPage() {
     Permission.INVENTORY_VIEW,
     Permission.INVENTORY_ADJUST,
   ]);
-  const canImport = can(Permission.IMPORTS_MANAGE);
+  const canImportProducts =
+    can(Permission.IMPORTS_PRODUCTS) || can(Permission.IMPORTS_MANAGE);
+  const canImportClients =
+    can(Permission.IMPORTS_CLIENTS) || can(Permission.IMPORTS_MANAGE);
+  const canImportSales =
+    can(Permission.IMPORTS_SALES) || can(Permission.IMPORTS_MANAGE);
+  const canImport = canImportProducts || canImportClients || canImportSales;
   const canChecklists = canAny([
     Permission.CHECKLISTS_COMPLETE,
     Permission.CHECKLISTS_MANAGE,
@@ -411,30 +417,36 @@ export default function AppDashboardPage() {
             <section>
               <h2 className="mb-4 text-lg font-bold text-stone-800">Import from Excel</h2>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:max-w-4xl">
-                <QuickActionCard
-                  href={`${AUTH_ROUTES.appImports}?mode=products`}
-                  title="Import products"
-                  description="Upload product catalog spreadsheet"
-                  iconLabel="Imports"
-                  size="large"
-                  color="teal"
-                />
-                <QuickActionCard
-                  href={`${AUTH_ROUTES.appImports}?mode=clients`}
-                  title="Import clients"
-                  description="Upload client list spreadsheet"
-                  iconLabel="Import Clients"
-                  size="large"
-                  color="sky"
-                />
-                <QuickActionCard
-                  href={`${AUTH_ROUTES.appImports}?mode=sales`}
-                  title="Import sales"
-                  description="Direct sell from Tally register"
-                  iconLabel="Import Sales"
-                  size="large"
-                  color="violet"
-                />
+                {canImportProducts ? (
+                  <QuickActionCard
+                    href={`${AUTH_ROUTES.appImports}?mode=products`}
+                    title="Import products"
+                    description="Upload product catalog spreadsheet"
+                    iconLabel="Imports"
+                    size="large"
+                    color="teal"
+                  />
+                ) : null}
+                {canImportClients ? (
+                  <QuickActionCard
+                    href={`${AUTH_ROUTES.appImports}?mode=clients`}
+                    title="Import clients"
+                    description="Upload client list spreadsheet"
+                    iconLabel="Import Clients"
+                    size="large"
+                    color="sky"
+                  />
+                ) : null}
+                {canImportSales ? (
+                  <QuickActionCard
+                    href={`${AUTH_ROUTES.appImports}?mode=sales`}
+                    title="Import sales"
+                    description="Direct sell from Tally register"
+                    iconLabel="Import Sales"
+                    size="large"
+                    color="violet"
+                  />
+                ) : null}
               </div>
             </section>
           )}

@@ -4,6 +4,12 @@ import { useMemo, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
+import {
+  ImportExampleCard,
+  ImportPreviewStats,
+  ImportTip,
+  ImportUploadForm,
+} from "@/components/imports/ImportUploadForm";
 import { formatSecondaryName } from "@/lib/products/productNames";
 import type {
   ClientImportPreview,
@@ -158,94 +164,87 @@ export function ClientImportPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-zinc-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-zinc-900">Client import</h2>
-        <p className="mt-1 text-sm text-zinc-600">
-          Upload an Excel file to add or update clients. Each row needs a primary name; secondary
-          name is optional. For rows that match an existing client, you can merge (update) or
-          create a new one.
-        </p>
-
-        <div className="mt-5 overflow-x-auto rounded-lg border border-sky-200 bg-sky-50/40">
-          <p className="border-b border-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-sky-900">
-            Example format (first sheet)
-          </p>
-          <table className="w-full min-w-[480px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-sky-200 text-xs font-semibold uppercase text-sky-800">
-                <th className="px-3 py-2">primary name</th>
-                <th className="px-3 py-2">secondary name</th>
-              </tr>
-            </thead>
-            <tbody>
-              {DEMO_ROWS.map((row) => (
-                <tr key={row.primary} className="border-t border-sky-100 text-zinc-800">
-                  <td className="px-3 py-2">{row.primary}</td>
-                  <td className="px-3 py-2">{row.secondary || "—"}</td>
+      <ImportUploadForm
+        title="Import clients"
+        description="Add or update clients from Excel. Primary name is required; secondary is optional. Matched rows can merge into an existing client or create a new one."
+        file={file}
+        fileInputRef={fileInputRef}
+        loading={loading}
+        showReset={Boolean(preview || result)}
+        onFileChange={(next) => {
+          setFile(next);
+          setPreview(null);
+          setResult(null);
+        }}
+        onSubmit={handlePreview}
+        onReset={reset}
+        tip={
+          <ImportTip>
+            Client names are company-wide — the same list is used at every warehouse
+            for stock out and returns.
+          </ImportTip>
+        }
+        example={
+          <ImportExampleCard title="Example columns">
+            <table className="w-full min-w-[480px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-stone-200 bg-white text-[11px] font-bold uppercase tracking-wide text-stone-500">
+                  <th className="px-3 py-2.5">Primary name</th>
+                  <th className="px-3 py-2.5">Secondary name</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <form onSubmit={handlePreview} className="mt-5 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-zinc-700">Excel file (.xlsx)</label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              className="hidden"
-              onChange={(e) => {
-                setFile(e.target.files?.[0] ?? null);
-                setPreview(null);
-                setResult(null);
-              }}
-            />
-            <div className="mt-1 flex flex-wrap items-center gap-3">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {file ? "Change file" : "Choose Excel file"}
-              </Button>
-              <span className="text-sm text-zinc-600">
-                {file ? file.name : "No file selected"}
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="submit"
-              disabled={!file || loading}
-              className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800 disabled:opacity-60"
-            >
-              {loading ? "Reading file…" : "Upload & preview"}
-            </button>
-            {(preview || result) && (
-              <Button type="button" variant="secondary" size="sm" onClick={reset}>
-                Start over
-              </Button>
-            )}
-          </div>
-        </form>
-      </div>
+              </thead>
+              <tbody>
+                {DEMO_ROWS.map((row) => (
+                  <tr
+                    key={row.primary}
+                    className="border-t border-stone-100 bg-white/70 text-stone-800"
+                  >
+                    <td className="px-3 py-2.5 font-medium">{row.primary}</td>
+                    <td className="px-3 py-2.5 text-stone-500">
+                      {row.secondary || "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </ImportExampleCard>
+        }
+      />
 
       <Alert message={error} />
       <Alert message={success} type="success" />
 
       {preview && (
         <div className="space-y-6">
-          <div className="flex flex-wrap gap-4 text-sm text-zinc-700">
-            <span>Total rows: {preview.totalRows}</span>
-            <span className="text-indigo-700">Matched: {preview.matchedCount}</span>
-            <span className="text-emerald-700">New: {preview.newCount}</span>
-            {preview.errorCount > 0 ? (
-              <span className="text-red-700">Errors: {preview.errorCount}</span>
-            ) : null}
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-orange-700">
+              Step 2 · Review & confirm
+            </p>
+            <h3 className="mt-1 text-lg font-bold text-stone-900">
+              Preview results
+            </h3>
           </div>
+
+          <ImportPreviewStats
+            items={[
+              { label: "Total rows", value: preview.totalRows },
+              {
+                label: "Matched",
+                value: preview.matchedCount,
+                tone: "info",
+              },
+              { label: "New", value: preview.newCount, tone: "success" },
+              ...(preview.errorCount > 0
+                ? [
+                    {
+                      label: "Errors",
+                      value: preview.errorCount,
+                      tone: "danger" as const,
+                    },
+                  ]
+                : []),
+            ]}
+          />
 
           {matchedRows.length > 0 && (
             <ImportReviewTable
@@ -283,18 +282,19 @@ export function ClientImportPanel() {
             />
           )}
 
-          <button
+          <Button
             type="button"
+            size="lg"
             disabled={
               confirming ||
               preview.rows.every((row) => row.errors.length > 0) ||
               preview.errorCount === preview.totalRows
             }
+            loading={confirming}
             onClick={() => void handleConfirm()}
-            className="rounded-lg bg-orange-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-orange-800 disabled:opacity-60"
           >
             {confirming ? "Importing…" : "Confirm import"}
-          </button>
+          </Button>
         </div>
       )}
 

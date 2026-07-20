@@ -68,7 +68,14 @@ export function buildAppNavGroups(
   if (hasAnyPermission(role, permissions, [Permission.TRANSFERS_MANAGE])) {
     moreMenu.push({ href: AUTH_ROUTES.appTransfers, label: "Transfer History" });
   }
-  if (hasAnyPermission(role, permissions, [Permission.IMPORTS_MANAGE])) {
+  if (
+    hasAnyPermission(role, permissions, [
+      Permission.IMPORTS_PRODUCTS,
+      Permission.IMPORTS_CLIENTS,
+      Permission.IMPORTS_SALES,
+      Permission.IMPORTS_MANAGE,
+    ])
+  ) {
     moreMenu.push({ href: AUTH_ROUTES.appImports, label: "Imports" });
   }
   if (

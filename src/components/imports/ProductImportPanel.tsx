@@ -4,6 +4,12 @@ import { useMemo, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
+import {
+  ImportExampleCard,
+  ImportPreviewStats,
+  ImportTip,
+  ImportUploadForm,
+} from "@/components/imports/ImportUploadForm";
 import { downloadFailedProductImportExcel } from "@/lib/imports/exportFailedProductImport";
 import { formatProductUnitSummary } from "@/lib/products/productUnits";
 import { formatLowStockImportSummary, formatWarehouseLowStockImportSummary } from "@/lib/imports/formatLowStockImportSummary";
@@ -238,123 +244,123 @@ export function ProductImportPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-zinc-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-zinc-900">Product catalog import</h2>
-        <p className="mt-1 text-sm text-zinc-600">
-          Upload an Excel file to add or update products. For each row you can merge the brand
-          into an existing one or create a new brand, and merge the product into an existing
-          item or create it separately.
-        </p>
-        <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          Imported products are listed in every active warehouse at zero stock. Use the
-          warehouse columns in Excel to set per-location low-stock alerts.
-        </p>
-
-        <div className="mt-5 overflow-x-auto rounded-lg border border-emerald-200 bg-emerald-50/40">
-          <p className="border-b border-emerald-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-900">
-            Example format (first sheet)
-          </p>
-          <table className="w-full min-w-[1100px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-emerald-200 text-xs font-semibold uppercase text-emerald-800">
-                <th className="px-3 py-2">brand</th>
-                <th className="px-3 py-2">product primary name</th>
-                <th className="px-3 py-2">product secondary name</th>
-                <th className="px-3 py-2">unit</th>
-                <th className="px-3 py-2">units in a cartoon</th>
-                <th className="px-3 py-2">total low quantity cartoon</th>
-                <th className="px-3 py-2">total low quantity unit</th>
-                <th className="px-3 py-2">low quantity cartoon in Goregaon</th>
-                <th className="px-3 py-2">low quantity unit in Goregaon</th>
-                <th className="px-3 py-2">low quantity cartoon in Vasai</th>
-                <th className="px-3 py-2">low quantity unit in Vasai</th>
-              </tr>
-            </thead>
-            <tbody>
-              {DEMO_ROWS.map((row) => (
-                <tr key={row.primary} className="border-t border-emerald-100 text-zinc-800">
-                  <td className="px-3 py-2">{row.brand}</td>
-                  <td className="px-3 py-2">{row.primary}</td>
-                  <td className="px-3 py-2">{row.secondary}</td>
-                  <td className="px-3 py-2">{row.unit}</td>
-                  <td className="px-3 py-2">{row.unitsPerCarton}</td>
-                  <td className="px-3 py-2">{row.lowCartons}</td>
-                  <td className="px-3 py-2">{row.lowUnits}</td>
-                  <td className="px-3 py-2">{row.goregaonCartons}</td>
-                  <td className="px-3 py-2">{row.goregaonUnits}</td>
-                  <td className="px-3 py-2">{row.vasaiCartons}</td>
-                  <td className="px-3 py-2">{row.vasaiUnits}</td>
+      <ImportUploadForm
+        title="Product catalog"
+        description="Add or update products from Excel. For each row you can merge into an existing brand/product or create new ones."
+        file={file}
+        fileInputRef={fileInputRef}
+        loading={loading}
+        showReset={Boolean(preview || result)}
+        onFileChange={(next) => {
+          setFile(next);
+          setPreview(null);
+          setResult(null);
+        }}
+        onSubmit={handlePreview}
+        onReset={reset}
+        tip={
+          <ImportTip>
+            Imported products appear in every active warehouse at{" "}
+            <strong className="font-semibold text-stone-900">zero stock</strong>.
+            Use warehouse columns in Excel for per-location low-stock alerts.
+          </ImportTip>
+        }
+        example={
+          <ImportExampleCard
+            title="Example columns"
+            footnote={
+              <>
+                Three independent low-stock alerts per product:{" "}
+                <strong className="font-semibold text-stone-700">total</strong>{" "}
+                overall, plus one carton/unit pair per warehouse (e.g. Goregaon,
+                Vasai). Fill only one side of each pair. Blank values default to
+                10 cartons. Legacy column{" "}
+                <strong className="font-semibold text-stone-700">
+                  low quantity cartoon
+                </strong>{" "}
+                also maps to total low.
+              </>
+            }
+          >
+            <table className="w-full min-w-[1100px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-stone-200 bg-white text-[11px] font-bold uppercase tracking-wide text-stone-500">
+                  <th className="whitespace-nowrap px-3 py-2.5">Brand</th>
+                  <th className="whitespace-nowrap px-3 py-2.5">Primary name</th>
+                  <th className="whitespace-nowrap px-3 py-2.5">Secondary</th>
+                  <th className="whitespace-nowrap px-3 py-2.5">Unit</th>
+                  <th className="whitespace-nowrap px-3 py-2.5">Units / carton</th>
+                  <th className="whitespace-nowrap px-3 py-2.5">Total low (cartons)</th>
+                  <th className="whitespace-nowrap px-3 py-2.5">Total low (units)</th>
+                  <th className="whitespace-nowrap px-3 py-2.5">Goregaon cartons</th>
+                  <th className="whitespace-nowrap px-3 py-2.5">Goregaon units</th>
+                  <th className="whitespace-nowrap px-3 py-2.5">Vasai cartons</th>
+                  <th className="whitespace-nowrap px-3 py-2.5">Vasai units</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="border-t border-emerald-200 px-4 py-2 text-xs text-emerald-900/80">
-            Three independent low-stock alerts per product: <strong>total low quantity</strong>{" "}
-            (overall), plus one column pair per warehouse (e.g. Goregaon, Vasai). Use
-            either cartons or units for each — fill only one side of each pair. Blank
-            values default to 10 cartons. Legacy column <strong>low quantity cartoon</strong>{" "}
-            also maps to total low.
-          </p>
-        </div>
-
-        <form onSubmit={handlePreview} className="mt-5 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-zinc-700">Excel file (.xlsx)</label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              className="hidden"
-              onChange={(e) => {
-                setFile(e.target.files?.[0] ?? null);
-                setPreview(null);
-                setResult(null);
-              }}
-            />
-            <div className="mt-1 flex flex-wrap items-center gap-3">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {file ? "Change file" : "Choose Excel file"}
-              </Button>
-              <span className="text-sm text-zinc-600">
-                {file ? file.name : "No file selected"}
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="submit"
-              disabled={!file || loading}
-              className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800 disabled:opacity-60"
-            >
-              {loading ? "Reading file…" : "Upload & preview"}
-            </button>
-            {(preview || result) && (
-              <Button type="button" variant="secondary" size="sm" onClick={reset}>
-                Start over
-              </Button>
-            )}
-          </div>
-        </form>
-      </div>
+              </thead>
+              <tbody>
+                {DEMO_ROWS.map((row) => (
+                  <tr
+                    key={row.primary}
+                    className="border-t border-stone-100 bg-white/70 text-stone-800"
+                  >
+                    <td className="px-3 py-2.5 font-medium">{row.brand}</td>
+                    <td className="px-3 py-2.5">{row.primary}</td>
+                    <td className="px-3 py-2.5 text-stone-500">{row.secondary}</td>
+                    <td className="px-3 py-2.5">{row.unit}</td>
+                    <td className="px-3 py-2.5 tabular-nums">{row.unitsPerCarton}</td>
+                    <td className="px-3 py-2.5 tabular-nums">{row.lowCartons || "—"}</td>
+                    <td className="px-3 py-2.5 tabular-nums">{row.lowUnits || "—"}</td>
+                    <td className="px-3 py-2.5 tabular-nums">
+                      {row.goregaonCartons || "—"}
+                    </td>
+                    <td className="px-3 py-2.5 tabular-nums">
+                      {row.goregaonUnits || "—"}
+                    </td>
+                    <td className="px-3 py-2.5 tabular-nums">{row.vasaiCartons || "—"}</td>
+                    <td className="px-3 py-2.5 tabular-nums">{row.vasaiUnits || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </ImportExampleCard>
+        }
+      />
 
       <Alert message={error} />
       <Alert message={success} type="success" />
 
       {preview && (
         <div className="space-y-6">
-          <div className="flex flex-wrap gap-4 text-sm text-zinc-700">
-            <span>Total rows: {preview.totalRows}</span>
-            <span className="text-indigo-700">Matched: {preview.matchedCount}</span>
-            <span className="text-emerald-700">New: {preview.newCount}</span>
-            {preview.errorCount > 0 ? (
-              <span className="text-red-700">Errors: {preview.errorCount}</span>
-            ) : null}
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-orange-700">
+              Step 2 · Review & confirm
+            </p>
+            <h3 className="mt-1 text-lg font-bold text-stone-900">
+              Preview results
+            </h3>
           </div>
+
+          <ImportPreviewStats
+            items={[
+              { label: "Total rows", value: preview.totalRows },
+              {
+                label: "Matched",
+                value: preview.matchedCount,
+                tone: "info",
+              },
+              { label: "New", value: preview.newCount, tone: "success" },
+              ...(preview.errorCount > 0
+                ? [
+                    {
+                      label: "Errors",
+                      value: preview.errorCount,
+                      tone: "danger" as const,
+                    },
+                  ]
+                : []),
+            ]}
+          />
 
           {matchedRows.length > 0 && (
             <ImportReviewTable
@@ -392,18 +398,19 @@ export function ProductImportPanel() {
             />
           )}
 
-          <button
+          <Button
             type="button"
+            size="lg"
             disabled={
               confirming ||
               preview.rows.every((row) => row.errors.length > 0) ||
               preview.errorCount === preview.totalRows
             }
+            loading={confirming}
             onClick={() => void handleConfirm()}
-            className="rounded-lg bg-orange-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-orange-800 disabled:opacity-60"
           >
             {confirming ? "Importing…" : "Confirm import"}
-          </button>
+          </Button>
         </div>
       )}
 

@@ -25,7 +25,11 @@ export const Permission = {
   PRODUCTS_VIEW: "products.view",
   PRODUCTS_MANAGE: "products.manage",
   REPORTS_VIEW: "reports.view",
+  /** @deprecated Prefer imports.products / imports.clients / imports.sales */
   IMPORTS_MANAGE: "imports.manage",
+  IMPORTS_PRODUCTS: "imports.products",
+  IMPORTS_CLIENTS: "imports.clients",
+  IMPORTS_SALES: "imports.sales",
   USERS_MANAGE: "users.manage",
   AUDIT_VIEW: "audit.view",
   CHECKLISTS_MANAGE: "checklists.manage",
@@ -70,6 +74,7 @@ const WAREHOUSE_SCOPED = new Set<PermissionCode>([
   Permission.TRANSFERS_RECEIVE,
   Permission.TRANSFERS_MANAGE,
   Permission.REPORTS_VIEW,
+  Permission.IMPORTS_SALES,
 ]);
 
 export const CLIENT_RETURN_PERMISSIONS: PermissionCode[] = [
@@ -91,7 +96,6 @@ export const ADMIN_ONLY_PERMISSIONS: readonly PermissionCode[] = [
   Permission.INVENTORY_VIEW,
   Permission.INVENTORY_ADJUST,
   Permission.INVENTORY_DASHBOARD,
-  Permission.IMPORTS_MANAGE,
   Permission.AUDIT_VIEW,
   Permission.USERS_MANAGE,
 ];
@@ -169,13 +173,35 @@ export function hasPermission(
 ): boolean {
   if (isAdminRole(role)) return true;
   const grants = permissions ?? [];
+  const hasLegacyImportsManage = grants.some(
+    (g) => g.code === Permission.IMPORTS_MANAGE && !g.warehouseId
+  );
+
   if (isWarehouseScopedPermission(code)) {
     if (!warehouseId) return false;
+    if (
+      code === Permission.IMPORTS_SALES &&
+      (hasLegacyImportsManage ||
+        grants.some(
+          (g) =>
+            g.code === Permission.IMPORTS_MANAGE &&
+            g.warehouseId === warehouseId
+        ))
+    ) {
+      return true;
+    }
     return grants.some(
       (g) => g.code === code && g.warehouseId === warehouseId
     );
   }
   if (grants.some((g) => g.code === code)) return true;
+  if (
+    hasLegacyImportsManage &&
+    (code === Permission.IMPORTS_PRODUCTS ||
+      code === Permission.IMPORTS_CLIENTS)
+  ) {
+    return true;
+  }
   const manageThatImplies = VIEW_IMPLIED_BY_MANAGE[code];
   return Boolean(
     manageThatImplies && grants.some((g) => g.code === manageThatImplies)
@@ -191,6 +217,14 @@ export function hasPermissionSomewhere(
   if (isAdminRole(role)) return true;
   const grants = permissions ?? [];
   if (grants.some((g) => g.code === code)) return true;
+  if (
+    grants.some((g) => g.code === Permission.IMPORTS_MANAGE) &&
+    (code === Permission.IMPORTS_PRODUCTS ||
+      code === Permission.IMPORTS_CLIENTS ||
+      code === Permission.IMPORTS_SALES)
+  ) {
+    return true;
+  }
   const manageThatImplies = VIEW_IMPLIED_BY_MANAGE[code];
   return Boolean(
     manageThatImplies && grants.some((g) => g.code === manageThatImplies)
@@ -225,32 +259,43 @@ export function canWarehouseReturn(
   );
 }
 
-/** Migrate legacy returns.warehouse → transfers.manage; Manage → ensure View. */
+/** Migrate legacy grants; Manage → ensure View. */
 export function migratePermissionGrants(
   grants: PermissionGrant[] | undefined
 ): PermissionGrant[] {
   if (!grants?.length) return [];
   const seen = new Set<string>();
   const out: PermissionGrant[] = [];
-  for (const grant of grants) {
-    const code =
-      grant.code === Permission.RETURNS_WAREHOUSE
-        ? Permission.TRANSFERS_MANAGE
-        : grant.code;
-    const key = grant.warehouseId ? `${code}:${grant.warehouseId}` : code;
-    if (seen.has(key)) continue;
+
+  function push(code: PermissionCode, warehouseId?: string) {
+    const key = warehouseId ? `${code}:${warehouseId}` : code;
+    if (seen.has(key)) return;
     seen.add(key);
     out.push({
       code,
-      ...(grant.warehouseId ? { warehouseId: grant.warehouseId } : {}),
+      ...(warehouseId ? { warehouseId } : {}),
     });
+  }
+
+  for (const grant of grants) {
+    if (grant.code === Permission.RETURNS_WAREHOUSE) {
+      push(Permission.TRANSFERS_MANAGE, grant.warehouseId);
+      continue;
+    }
+    if (grant.code === Permission.IMPORTS_MANAGE) {
+      push(Permission.IMPORTS_PRODUCTS);
+      push(Permission.IMPORTS_CLIENTS);
+      if (grant.warehouseId) {
+        push(Permission.IMPORTS_SALES, grant.warehouseId);
+      }
+      continue;
+    }
+    push(grant.code, grant.warehouseId);
   }
   for (const grant of [...out]) {
     const impliedView = MANAGE_IMPLIES_VIEW[grant.code];
     if (!impliedView || grant.warehouseId) continue;
-    if (seen.has(impliedView)) continue;
-    seen.add(impliedView);
-    out.push({ code: impliedView });
+    push(impliedView);
   }
   return out;
 }
@@ -283,6 +328,14 @@ export function getDefaultAppPath(
     { codes: [Permission.TRANSFERS_MANAGE], path: "/app/transfers" },
     { codes: [Permission.REPORTS_VIEW], path: "/app/reports" },
     { codes: [Permission.IMPORTS_MANAGE], path: "/app/imports" },
+    {
+      codes: [
+        Permission.IMPORTS_PRODUCTS,
+        Permission.IMPORTS_CLIENTS,
+        Permission.IMPORTS_SALES,
+      ],
+      path: "/app/imports",
+    },
     { codes: [Permission.WAREHOUSES_MANAGE, Permission.WAREHOUSES_VIEW], path: "/app/warehouses" },
     { codes: [Permission.BRANDS_MANAGE, Permission.BRANDS_VIEW], path: "/app/brands" },
     { codes: [Permission.CLIENTS_MANAGE, Permission.CLIENTS_VIEW], path: "/app/clients" },
@@ -350,7 +403,15 @@ export const APP_ROUTE_PERMISSIONS: Array<{
     permissions: [Permission.CHECKLISTS_COMPLETE, Permission.CHECKLISTS_MANAGE],
   },
   { prefix: "/app/reports", permissions: [Permission.REPORTS_VIEW] },
-  { prefix: "/app/imports", permissions: [Permission.IMPORTS_MANAGE] },
+  {
+    prefix: "/app/imports",
+    permissions: [
+      Permission.IMPORTS_PRODUCTS,
+      Permission.IMPORTS_CLIENTS,
+      Permission.IMPORTS_SALES,
+      Permission.IMPORTS_MANAGE,
+    ],
+  },
   {
     prefix: "/app/warehouses",
     permissions: [Permission.WAREHOUSES_VIEW, Permission.WAREHOUSES_MANAGE],

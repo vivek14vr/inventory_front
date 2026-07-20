@@ -5,6 +5,14 @@ import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { WarehouseSelect } from "@/components/stock/WarehouseSelect";
+import {
+  ImportExampleCard,
+  ImportPreviewStats,
+  ImportTip,
+  ImportUploadForm,
+} from "@/components/imports/ImportUploadForm";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permission } from "@/lib/auth/permissions";
 import { downloadFailedSalesImportExcel } from "@/lib/imports/exportFailedSalesImport";
 import { formatSecondaryName } from "@/lib/products/productNames";
 import type {
@@ -192,6 +200,12 @@ function productLabel(product: SalesImportExistingProduct): string {
 }
 
 export function SalesImportPanel() {
+  const { isAdmin, warehousesFor } = usePermissions();
+  const salesWarehouseIds = useMemo(
+    () => (isAdmin ? undefined : warehousesFor(Permission.IMPORTS_SALES)),
+    [isAdmin, warehousesFor]
+  );
+
   const [file, setFile] = useState<File | null>(null);
   const [warehouseId, setWarehouseId] = useState("");
   const [preview, setPreview] = useState<SalesImportPreview | null>(null);
@@ -406,116 +420,119 @@ export function SalesImportPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-zinc-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-zinc-900">Direct sell / stock out import</h2>
-        <p className="mt-1 text-sm text-zinc-600">
-          Upload a Tally sales register Excel. After preview you can edit invoice details and choose
-          whether to merge or create clients, brands, and products before importing.
-        </p>
-
-        <div className="mt-5 overflow-x-auto rounded-lg border border-sky-200 bg-sky-50/40">
-          <p className="border-b border-sky-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-sky-900">
-            Column layout (header row detected automatically)
-          </p>
-          <table className="w-full min-w-[780px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-sky-200 text-xs font-semibold uppercase text-sky-800">
-                <th className="px-3 py-2">A — Date</th>
-                <th className="px-3 py-2">B — Particulars</th>
-                <th className="px-3 py-2">C</th>
-                <th className="px-3 py-2">D</th>
-                <th className="px-3 py-2">E — Voucher no.</th>
-                <th className="px-3 py-2">F — Quantity</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-t border-sky-100 text-zinc-800">
-                <td className="px-3 py-2">01-Jul-26</td>
-                <td className="px-3 py-2 font-medium">Sandhya (client)</td>
-                <td className="px-3 py-2 text-zinc-400">ignore</td>
-                <td className="px-3 py-2 text-zinc-400">ignore</td>
-                <td className="px-3 py-2">1748</td>
-                <td className="px-3 py-2 text-zinc-400">ignore</td>
-              </tr>
-              <tr className="border-t border-sky-100 text-zinc-800">
-                <td className="px-3 py-2 text-zinc-400">—</td>
-                <td className="px-3 py-2">1000ml Rectangle Container (DP)</td>
-                <td className="px-3 py-2 text-zinc-400">—</td>
-                <td className="px-3 py-2 text-zinc-400">—</td>
-                <td className="px-3 py-2 text-zinc-400">—</td>
-                <td className="px-3 py-2">1000</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <form onSubmit={handlePreview} className="mt-5 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-zinc-700">Excel file (.xlsx)</label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              className="hidden"
-              onChange={(e) => {
-                setFile(e.target.files?.[0] ?? null);
-                setPreview(null);
-                setResult(null);
-              }}
-            />
-            <div className="mt-1 flex flex-wrap items-center gap-3">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {file ? "Change file" : "Choose Excel file"}
-              </Button>
-              <span className="text-sm text-zinc-600">
-                {file ? file.name : "No file selected"}
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="submit"
-              disabled={!file || loading}
-              className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800 disabled:opacity-60"
-            >
-              {loading ? "Reading file…" : "Upload & preview"}
-            </button>
-            {(preview || result) && (
-              <Button type="button" variant="secondary" size="sm" onClick={reset}>
-                Start over
-              </Button>
-            )}
-          </div>
-        </form>
-      </div>
+      <ImportUploadForm
+        title="Direct sell / stock out"
+        description="Upload a Tally sales register. After preview you can edit invoice details and choose whether to merge or create clients, brands, and products."
+        file={file}
+        fileInputRef={fileInputRef}
+        loading={loading}
+        showReset={Boolean(preview || result)}
+        onFileChange={(next) => {
+          setFile(next);
+          setPreview(null);
+          setResult(null);
+        }}
+        onSubmit={handlePreview}
+        onReset={reset}
+        tip={
+          <ImportTip>
+            Stock is deducted from the warehouse you pick after preview. Only
+            warehouses you are granted for sales import appear in that list.
+          </ImportTip>
+        }
+        example={
+          <ImportExampleCard
+            title="Column layout"
+            footnote="Header row is detected automatically. Client rows use Date + Particulars + Voucher; product lines sit under each voucher with Quantity."
+          >
+            <table className="w-full min-w-[780px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-stone-200 bg-white text-[11px] font-bold uppercase tracking-wide text-stone-500">
+                  <th className="px-3 py-2.5">A — Date</th>
+                  <th className="px-3 py-2.5">B — Particulars</th>
+                  <th className="px-3 py-2.5">C</th>
+                  <th className="px-3 py-2.5">D</th>
+                  <th className="px-3 py-2.5">E — Voucher no.</th>
+                  <th className="px-3 py-2.5">F — Quantity</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-t border-stone-100 bg-white/70 text-stone-800">
+                  <td className="px-3 py-2.5">01-Jul-26</td>
+                  <td className="px-3 py-2.5 font-medium">Sandhya (client)</td>
+                  <td className="px-3 py-2.5 text-stone-400">ignore</td>
+                  <td className="px-3 py-2.5 text-stone-400">ignore</td>
+                  <td className="px-3 py-2.5">1748</td>
+                  <td className="px-3 py-2.5 text-stone-400">ignore</td>
+                </tr>
+                <tr className="border-t border-stone-100 bg-white/70 text-stone-800">
+                  <td className="px-3 py-2.5 text-stone-400">—</td>
+                  <td className="px-3 py-2.5">1000ml Rectangle Container (DP)</td>
+                  <td className="px-3 py-2.5 text-stone-400">—</td>
+                  <td className="px-3 py-2.5 text-stone-400">—</td>
+                  <td className="px-3 py-2.5 text-stone-400">—</td>
+                  <td className="px-3 py-2.5 tabular-nums">1000</td>
+                </tr>
+              </tbody>
+            </table>
+          </ImportExampleCard>
+        }
+      />
 
       <Alert message={error} />
       <Alert message={success} type="success" />
 
       {preview && (
         <div className="space-y-6">
-          <div className="rounded-xl border border-zinc-200 bg-white p-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-orange-700">
+              Step 2 · Warehouse & review
+            </p>
+            <h3 className="mt-1 text-lg font-bold text-stone-900">
+              Confirm stock out
+            </h3>
+          </div>
+
+          <div className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-sm">
             <WarehouseSelect
               value={warehouseId}
               onChange={setWarehouseId}
               label="Stock out from warehouse"
+              allowedWarehouseIds={salesWarehouseIds}
             />
-          </div>
-
-          <div className="flex flex-wrap gap-4 text-sm text-zinc-700">
-            <span>Invoices: {preview.totalVouchers}</span>
-            <span>Product lines: {preview.totalLines}</span>
-            <span className="text-indigo-700">Matched products: {preview.matchedCount}</span>
-            <span className="text-amber-700">Unmatched products: {preview.unmatchedCount}</span>
-            {preview.errorCount > 0 ? (
-              <span className="text-red-700">Errors: {preview.errorCount}</span>
+            {!isAdmin && (salesWarehouseIds?.length ?? 0) === 0 ? (
+              <p className="mt-2 text-sm text-amber-700">
+                No warehouse granted for sales import. Ask an admin to grant
+                “Import direct sell / stock out” for a warehouse.
+              </p>
             ) : null}
           </div>
+
+          <ImportPreviewStats
+            items={[
+              { label: "Invoices", value: preview.totalVouchers },
+              { label: "Product lines", value: preview.totalLines },
+              {
+                label: "Matched products",
+                value: preview.matchedCount,
+                tone: "info",
+              },
+              {
+                label: "Unmatched",
+                value: preview.unmatchedCount,
+                tone: "warning",
+              },
+              ...(preview.errorCount > 0
+                ? [
+                    {
+                      label: "Errors",
+                      value: preview.errorCount,
+                      tone: "danger" as const,
+                    },
+                  ]
+                : []),
+            ]}
+          />
 
           {preview.vouchers.map((voucher) => (
             <VoucherReviewCard
@@ -531,14 +548,15 @@ export function SalesImportPanel() {
             />
           ))}
 
-          <button
+          <Button
             type="button"
+            size="lg"
             disabled={confirming || !allLinesReady}
+            loading={confirming}
             onClick={() => void handleConfirm()}
-            className="rounded-lg bg-orange-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-orange-800 disabled:opacity-60"
           >
             {confirming ? "Importing…" : "Confirm stock out import"}
-          </button>
+          </Button>
         </div>
       )}
 
