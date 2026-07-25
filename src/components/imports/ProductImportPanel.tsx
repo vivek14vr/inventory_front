@@ -84,11 +84,12 @@ function mergeProductIdForBrand(
   brandId: string | undefined,
   preferredProductId?: string
 ): string | undefined {
+  if (!preferredProductId) return undefined;
   const brandProducts = productsForBrand(preview, brandId);
-  if (preferredProductId && brandProducts.some((p) => p.id === preferredProductId)) {
+  if (brandProducts.some((p) => p.id === preferredProductId)) {
     return preferredProductId;
   }
-  return brandProducts[0]?.id;
+  return undefined;
 }
 
 export function ProductImportPanel() {
@@ -504,7 +505,7 @@ function ImportReviewTable({
                                 ? mergeProductIdForBrand(
                                     preview,
                                     nextBrandId,
-                                    row.matchedProduct?.id
+                                    state?.mergeTargetProductId ?? row.matchedProduct?.id
                                   )
                                 : undefined,
                           });
@@ -512,10 +513,7 @@ function ImportReviewTable({
                         className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm"
                       >
                         {row.brandCategory === "matched" ? (
-                          <>
-                            <option value="merge">Use existing brand</option>
-                            <option value="create">Create new brand</option>
-                          </>
+                          <option value="merge">Use existing brand</option>
                         ) : (
                           <>
                             <option value="create">Create new brand</option>
@@ -540,7 +538,7 @@ function ImportReviewTable({
                                   ? mergeProductIdForBrand(
                                       preview,
                                       nextBrandId,
-                                      row.matchedProduct?.id
+                                      state?.mergeTargetProductId ?? row.matchedProduct?.id
                                     )
                                   : undefined,
                             });
@@ -621,7 +619,7 @@ function ImportReviewTable({
                                   ? mergeProductIdForBrand(
                                       preview,
                                       brandId,
-                                      row.matchedProduct?.id
+                                      state?.mergeTargetProductId ?? row.matchedProduct?.id
                                     )
                                   : undefined,
                             });
@@ -651,13 +649,16 @@ function ImportReviewTable({
                             }
                             onChange={(e) =>
                               onUpdateAction(row.rowNumber, {
-                                mergeTargetProductId: e.target.value,
+                                mergeTargetProductId: e.target.value || undefined,
                               })
                             }
                             className="rounded-lg border border-zinc-300 px-2 py-1.5 text-xs"
                           >
+                            <option value="">Select a product…</option>
                             {brandProducts.length === 0 ? (
-                              <option value="">No products under selected brand</option>
+                              <option value="" disabled>
+                                No products under selected brand
+                              </option>
                             ) : (
                               brandProducts.map((product) => (
                                 <option key={product.id} value={product.id}>
