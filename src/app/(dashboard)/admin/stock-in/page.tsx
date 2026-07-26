@@ -11,7 +11,7 @@ export default function AdminStockInPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PageHeader
           title="Stock in"
-          description="Add stock into a warehouse — tap to select warehouse, brand, and product."
+          description="Add one or more products from a brand into a warehouse."
         />
         <Link
           href={AUTH_ROUTES.adminProducts}

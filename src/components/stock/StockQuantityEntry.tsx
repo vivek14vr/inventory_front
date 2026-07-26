@@ -1,6 +1,6 @@
 "use client";
 
-import type { Product } from "@/types/master";
+import type { ProductUnitFields } from "@/lib/products/productUnits";
 import {
   formatQuantityEntryPreview,
   formatStockUnitHint,
@@ -13,7 +13,7 @@ import {
 } from "@/lib/products/productUnits";
 
 type StockQuantityEntryProps = {
-  product?: Product | null;
+  product?: Partial<ProductUnitFields> | null;
   quantity: string;
   onQuantityChange: (value: string) => void;
   mode: QuantityEntryMode;

@@ -43,7 +43,11 @@ async function fetchWithTokenRetry(
     });
   } catch {
     throw new ApiError(
-      "Cannot reach server. Start the backend (port 4000) or run `npm run dev` from the project root.",
+      typeof window !== "undefined" &&
+        (window.location.hostname === "localhost" ||
+          window.location.hostname === "127.0.0.1")
+        ? "Cannot reach server. Start the backend (port 4000) or run `npm run dev` from the project root."
+        : "Cannot reach the API. Check your connection and try again.",
       0,
       "NETWORK_ERROR"
     );
@@ -62,7 +66,11 @@ async function fetchWithTokenRetry(
         });
       } catch {
         throw new ApiError(
-          "Cannot reach server. Start the backend (port 4000) or run `npm run dev` from the project root.",
+          typeof window !== "undefined" &&
+            (window.location.hostname === "localhost" ||
+              window.location.hostname === "127.0.0.1")
+            ? "Cannot reach server. Start the backend (port 4000) or run `npm run dev` from the project root."
+            : "Cannot reach the API. Check your connection and try again.",
           0,
           "NETWORK_ERROR"
         );

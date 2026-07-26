@@ -64,11 +64,33 @@ type RequestOptions = RequestInit & {
 };
 
 async function parseJsonResponse<T>(response: Response): Promise<ApiResponse<T>> {
-  try {
-    return (await response.json()) as ApiResponse<T>;
-  } catch {
-    throw new ApiError("Invalid response from server", response.status);
+  const text = await response.text();
+  if (!text.trim()) {
+    throw new ApiError(
+      `Empty response from server${response.status ? ` (${response.status})` : ""}`,
+      response.status,
+      "INVALID_RESPONSE"
+    );
   }
+  try {
+    return JSON.parse(text) as ApiResponse<T>;
+  } catch {
+    throw new ApiError(
+      `Invalid response from server${response.status ? ` (${response.status})` : ""}`,
+      response.status,
+      "INVALID_RESPONSE"
+    );
+  }
+}
+
+function networkErrorMessage(devHint: string): string {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return devHint;
+    }
+  }
+  return "Cannot reach the API. Check your connection and try again.";
 }
 
 async function resolveAuthToken(explicit?: string | null): Promise<string | undefined> {
@@ -98,7 +120,9 @@ async function fetchWithAuth(
     });
   } catch {
     throw new ApiError(
-      "Cannot reach server. Check that the API is running on port 4000.",
+      networkErrorMessage(
+        "Cannot reach server. Check that the API is running on port 4000."
+      ),
       0,
       "NETWORK_ERROR"
     );
@@ -142,7 +166,9 @@ export async function apiClient<T>(
     });
   } catch {
     throw new ApiError(
-      "Cannot reach server. Check that the API is running on port 4000.",
+      networkErrorMessage(
+        "Cannot reach server. Check that the API is running on port 4000."
+      ),
       0,
       "NETWORK_ERROR"
     );
@@ -194,7 +220,9 @@ export const api = {
         });
       } catch {
         throw new ApiError(
-          "Cannot reach server. Start the API (npm run dev) and use your computer's IP on mobile, not localhost.",
+          networkErrorMessage(
+            "Cannot reach server. Start the API (npm run dev) and use your computer's IP on mobile, not localhost."
+          ),
           0,
           "NETWORK_ERROR"
         );
@@ -421,6 +449,18 @@ export const api = {
         "/stock/in",
         { method: "POST", body: JSON.stringify(data) }
       ),
+    stockInBatch: (data: {
+      warehouseId?: string;
+      brandId: string;
+      notes?: string;
+      items: Array<{ productId: string; quantity: number }>;
+    }) =>
+      apiClient<{
+        movements: StockMovement[];
+        balances: Record<string, number>;
+        brandId: string;
+        brandName: string;
+      }>("/stock/in/batch", { method: "POST", body: JSON.stringify(data) }),
     stockOut: (data: {
       warehouseId?: string;
       brandId: string;
@@ -756,12 +796,7 @@ export const api = {
         body: form,
       });
 
-      let body: ApiResponse<TallyImport>;
-      try {
-        body = (await response.json()) as ApiResponse<TallyImport>;
-      } catch {
-        throw new ApiError("Invalid response from server", response.status);
-      }
+      const body = await parseJsonResponse<TallyImport>(response);
       if (!response.ok || !body.success) {
         throw new ApiError(
           body.message ?? "Upload failed",
@@ -778,12 +813,7 @@ export const api = {
         method: "POST",
         body: form,
       });
-      let body: ApiResponse<ProductImportPreview>;
-      try {
-        body = (await response.json()) as ApiResponse<ProductImportPreview>;
-      } catch {
-        throw new ApiError("Invalid response from server", response.status);
-      }
+      const body = await parseJsonResponse<ProductImportPreview>(response);
       if (!response.ok || !body.success) {
         throw new ApiError(body.message ?? "Preview failed", response.status, body.code);
       }
@@ -804,12 +834,7 @@ export const api = {
         method: "POST",
         body: form,
       });
-      let body: ApiResponse<SalesImportPreview>;
-      try {
-        body = (await response.json()) as ApiResponse<SalesImportPreview>;
-      } catch {
-        throw new ApiError("Invalid response from server", response.status);
-      }
+      const body = await parseJsonResponse<SalesImportPreview>(response);
       if (!response.ok || !body.success) {
         throw new ApiError(body.message ?? "Preview failed", response.status, body.code);
       }
@@ -831,12 +856,7 @@ export const api = {
         method: "POST",
         body: form,
       });
-      let body: ApiResponse<ClientImportPreview>;
-      try {
-        body = (await response.json()) as ApiResponse<ClientImportPreview>;
-      } catch {
-        throw new ApiError("Invalid response from server", response.status);
-      }
+      const body = await parseJsonResponse<ClientImportPreview>(response);
       if (!response.ok || !body.success) {
         throw new ApiError(body.message ?? "Preview failed", response.status, body.code);
       }

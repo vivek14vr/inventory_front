@@ -117,30 +117,48 @@ export function DirectSellForm({
     });
 
   useEffect(() => {
+    let cancelled = false;
     setLoadingWarehouses(true);
     setError("");
     api.warehouses
       .list()
-      .then(setWarehouses)
+      .then((data) => {
+        if (!cancelled) setWarehouses(data);
+      })
       .catch((err) => {
+        if (cancelled) return;
         setWarehouses([]);
         setError(err instanceof ApiError ? err.message : "Could not load warehouses");
       })
-      .finally(() => setLoadingWarehouses(false));
+      .finally(() => {
+        if (!cancelled) setLoadingWarehouses(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    if (step === "cart" || step === "addBrand" || step === "addProduct" || step === "addQuantity") {
-      setLoadingBrands(true);
-      api.brands
-        .list()
-        .then(setBrands)
-        .catch((err) => {
-          setBrands([]);
-          setError(err instanceof ApiError ? err.message : "Could not load brands");
-        })
-        .finally(() => setLoadingBrands(false));
-    }
+    if (step !== "cart" && step !== "addBrand" && step !== "addProduct") return;
+    let cancelled = false;
+    setLoadingBrands(true);
+    setError("");
+    api.brands
+      .list()
+      .then((data) => {
+        if (!cancelled) setBrands(data);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setBrands([]);
+        setError(err instanceof ApiError ? err.message : "Could not load brands");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingBrands(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [step]);
 
   useEffect(() => {
@@ -148,15 +166,25 @@ export function DirectSellForm({
       setProducts([]);
       return;
     }
+    let cancelled = false;
     setLoadingProducts(true);
+    setError("");
     api.products
       .listAll({ brandId: addBrandId })
-      .then(setProducts)
+      .then((data) => {
+        if (!cancelled) setProducts(data);
+      })
       .catch((err) => {
+        if (cancelled) return;
         setProducts([]);
         setError(err instanceof ApiError ? err.message : "Could not load products");
       })
-      .finally(() => setLoadingProducts(false));
+      .finally(() => {
+        if (!cancelled) setLoadingProducts(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [addBrandId]);
 
   useEffect(() => {
@@ -239,18 +267,28 @@ export function DirectSellForm({
   function confirmAddProduct() {
     if (!selectedAddProduct || !addBrandId) return;
     if (cannotAddQuantity || addExceedsAvailable || addEnteredBaseQty <= 0) return;
+    if (existingProductIds.has(selectedAddProduct.id)) {
+      setError("This product is already on the sale");
+      setStep("cart");
+      return;
+    }
 
-    setSaleLines((prev) => [
-      ...prev,
-      {
-        id: newLineId(),
-        brandId: addBrandId,
-        productId: selectedAddProduct.id,
-        product: selectedAddProduct,
-        quantity: addQuantity,
-        quantityMode: addQuantityMode,
-      },
-    ]);
+    setSaleLines((prev) => {
+      if (prev.some((line) => line.productId === selectedAddProduct.id)) {
+        return prev;
+      }
+      return [
+        ...prev,
+        {
+          id: newLineId(),
+          brandId: addBrandId,
+          productId: selectedAddProduct.id,
+          product: selectedAddProduct,
+          quantity: addQuantity,
+          quantityMode: addQuantityMode,
+        },
+      ];
+    });
     setAddBrandId("");
     setAddProductId("");
     setAddQuantity("");

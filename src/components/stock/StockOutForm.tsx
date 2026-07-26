@@ -146,31 +146,48 @@ function StockOutSingleForm({
     useWarehouseProductBalances(resolvedWarehouseId, { enabled: step === "product", brandId });
 
   useEffect(() => {
+    let cancelled = false;
     setLoadingWarehouses(true);
     setError("");
     api.warehouses
       .list()
-      .then(setWarehouses)
+      .then((data) => {
+        if (!cancelled) setWarehouses(data);
+      })
       .catch((err) => {
+        if (cancelled) return;
         setWarehouses([]);
         setError(err instanceof ApiError ? err.message : "Could not load warehouses");
       })
-      .finally(() => setLoadingWarehouses(false));
+      .finally(() => {
+        if (!cancelled) setLoadingWarehouses(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    if (step === "brand" || step === "product" || step === "dispatch" || step === "destination" || step === "confirm") {
-      setLoadingBrands(true);
-      setError("");
-      api.brands
-        .list()
-        .then(setBrands)
-        .catch((err) => {
-          setBrands([]);
-          setError(err instanceof ApiError ? err.message : "Could not load brands");
-        })
-        .finally(() => setLoadingBrands(false));
-    }
+    if (step !== "brand" && step !== "product") return;
+    let cancelled = false;
+    setLoadingBrands(true);
+    setError("");
+    api.brands
+      .list()
+      .then((data) => {
+        if (!cancelled) setBrands(data);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setBrands([]);
+        setError(err instanceof ApiError ? err.message : "Could not load brands");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingBrands(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [step]);
 
   useEffect(() => {
@@ -178,16 +195,25 @@ function StockOutSingleForm({
       setProducts([]);
       return;
     }
+    let cancelled = false;
     setLoadingProducts(true);
     setError("");
     api.products
       .listAll({ brandId })
-      .then(setProducts)
+      .then((data) => {
+        if (!cancelled) setProducts(data);
+      })
       .catch((err) => {
+        if (cancelled) return;
         setProducts([]);
         setError(err instanceof ApiError ? err.message : "Could not load products");
       })
-      .finally(() => setLoadingProducts(false));
+      .finally(() => {
+        if (!cancelled) setLoadingProducts(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [brandId]);
 
   useEffect(() => {
