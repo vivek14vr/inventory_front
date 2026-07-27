@@ -120,11 +120,12 @@ function mergeProductIdForBrand(
   brandId: string | undefined,
   preferredProductId?: string
 ): string | undefined {
+  if (!preferredProductId) return undefined;
   const brandProducts = productsForBrand(products, brandId);
-  if (preferredProductId && brandProducts.some((p) => p.id === preferredProductId)) {
+  if (brandProducts.some((p) => p.id === preferredProductId)) {
     return preferredProductId;
   }
-  return brandProducts[0]?.id;
+  return undefined;
 }
 
 function suggestProducts(

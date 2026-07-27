@@ -67,7 +67,7 @@ async function parseJsonResponse<T>(response: Response): Promise<ApiResponse<T>>
   const text = await response.text();
   if (!text.trim()) {
     throw new ApiError(
-      `Empty response from server${response.status ? ` (${response.status})` : ""}`,
+      `Empty response from server${response.status ? ` (${response.status})` : ""}. The API may have timed out or crashed — check backend logs.`,
       response.status,
       "INVALID_RESPONSE"
     );
@@ -75,8 +75,11 @@ async function parseJsonResponse<T>(response: Response): Promise<ApiResponse<T>>
   try {
     return JSON.parse(text) as ApiResponse<T>;
   } catch {
+    const looksHtml = /^\s*</.test(text) || /<!DOCTYPE|<html/i.test(text);
     throw new ApiError(
-      `Invalid response from server${response.status ? ` (${response.status})` : ""}`,
+      looksHtml
+        ? `Server returned an error page (${response.status}). Often a proxy timeout or API crash during a large import — check backend logs and retry.`
+        : `Invalid response from server (${response.status})`,
       response.status,
       "INVALID_RESPONSE"
     );
