@@ -17,6 +17,7 @@ import {
 } from "@/lib/products/productUnits";
 import { matchesProductSearch } from "@/lib/products/productNames";
 import { validatePositiveInteger } from "@/lib/validation/quantity";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { productSelectionGridItem } from "@/lib/products/productSelectionGrid";
 import { useWarehouseProductBalances } from "@/hooks/useWarehouseProductBalances";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
@@ -95,6 +96,7 @@ function StockOutSingleForm({
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [notes, setNotes] = useState("");
   const [productSearch, setProductSearch] = useState("");
+  const debouncedProductSearch = useDebouncedValue(productSearch, 250);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -132,8 +134,12 @@ function StockOutSingleForm({
   const selectedWarehouse = warehouseOptions.find((w) => w.id === resolvedWarehouseId);
   const selectedBrand = brands.find((b) => b.id === brandId);
   const selectedProduct = products.find((p) => p.id === productId);
-  const filteredProducts = products.filter(
-    (p) => p.isActive && matchesProductSearch(p, productSearch)
+  const filteredProducts = useMemo(
+    () =>
+      products.filter(
+        (p) => p.isActive && matchesProductSearch(p, debouncedProductSearch)
+      ),
+    [products, debouncedProductSearch]
   );
   const fetchProductSuggestions = useMemo(
     () => createBrandProductSuggestions(products),

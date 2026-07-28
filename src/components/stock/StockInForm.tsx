@@ -17,6 +17,7 @@ import {
 } from "@/lib/products/productUnits";
 import { matchesProductSearch } from "@/lib/products/productNames";
 import { validatePositiveInteger } from "@/lib/validation/quantity";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { productSelectionGridItem } from "@/lib/products/productSelectionGrid";
 import { useWarehouseProductBalances } from "@/hooks/useWarehouseProductBalances";
 import { StockQuantityEntry } from "@/components/stock/StockQuantityEntry";
@@ -94,6 +95,7 @@ export function StockInForm({
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [notes, setNotes] = useState("");
   const [productSearch, setProductSearch] = useState("");
+  const debouncedProductSearch = useDebouncedValue(productSearch, 250);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -120,8 +122,12 @@ export function StockInForm({
     () => new Set(lines.map((line) => line.productId)),
     [lines]
   );
-  const filteredProducts = products.filter(
-    (p) => p.isActive && matchesProductSearch(p, productSearch)
+  const filteredProducts = useMemo(
+    () =>
+      products.filter(
+        (p) => p.isActive && matchesProductSearch(p, debouncedProductSearch)
+      ),
+    [products, debouncedProductSearch]
   );
   const fetchProductSuggestions = useMemo(
     () => createBrandProductSuggestions(products),

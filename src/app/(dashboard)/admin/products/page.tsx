@@ -8,6 +8,7 @@ import { ButtonSelect } from "@/components/ui/ButtonSelect";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { usePagination } from "@/hooks/usePagination";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Permission } from "@/lib/auth/permissions";
@@ -57,6 +58,7 @@ export default function AdminProductsPage() {
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [pagination, setPagination] = useState<PaginationMeta | null>(null);
   const [warehouseThresholds, setWarehouseThresholds] = useState<Record<string, string>>(
     {}
@@ -126,7 +128,7 @@ export default function AdminProductsPage() {
           brandId: filterBrandId || undefined,
           page,
           limit,
-          ...(search.trim() ? { search: search.trim() } : {}),
+          ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
         }),
         api.brands.list(),
       ]);
@@ -138,11 +140,15 @@ export default function AdminProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [canManage, filterBrandId, page, limit, search]);
+  }, [canManage, filterBrandId, page, limit, debouncedSearch]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    resetPage();
+  }, [debouncedSearch, resetPage]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -263,13 +269,9 @@ export default function AdminProductsPage() {
               </label>
               <SearchInputWithSuggestions
                 value={search}
-                onChange={(value) => {
-                  setSearch(value);
-                  resetPage();
-                }}
+                onChange={setSearch}
                 onSelect={(suggestion) => {
                   setSearch(suggestion.searchTerm);
-                  resetPage();
                 }}
                 fetchSuggestions={fetchProductSuggestions}
                 placeholder="Product name…"

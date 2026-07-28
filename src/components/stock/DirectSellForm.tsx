@@ -16,6 +16,7 @@ import {
 } from "@/lib/products/productUnits";
 import { matchesProductSearch } from "@/lib/products/productNames";
 import { validatePositiveInteger } from "@/lib/validation/quantity";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useWarehouseProductBalances } from "@/hooks/useWarehouseProductBalances";
 import {
   ProductQuickStockGrid,
@@ -69,6 +70,7 @@ export function DirectSellForm({
   const [saleLines, setSaleLines] = useState<SaleLine[]>([]);
   const [brandId, setBrandId] = useState("");
   const [productSearch, setProductSearch] = useState("");
+  const debouncedProductSearch = useDebouncedValue(productSearch, 250);
 
   const [clientName, setClientName] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -93,8 +95,12 @@ export function DirectSellForm({
 
   const selectedWarehouse = warehouseOptions.find((w) => w.id === resolvedWarehouseId);
   const selectedBrand = brands.find((b) => b.id === brandId);
-  const filteredProducts = products.filter(
-    (p) => p.isActive && matchesProductSearch(p, productSearch)
+  const filteredProducts = useMemo(
+    () =>
+      products.filter(
+        (p) => p.isActive && matchesProductSearch(p, debouncedProductSearch)
+      ),
+    [products, debouncedProductSearch]
   );
   const fetchProductSuggestions = useMemo(
     () => createBrandProductSuggestions(products),

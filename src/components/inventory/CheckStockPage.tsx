@@ -13,6 +13,7 @@ import {
 import { useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Pagination } from "@/components/ui/Pagination";
@@ -224,6 +225,7 @@ function CheckStockPageContent() {
   const [brandId, setBrandId] = useState("");
   const [movementType, setMovementType] = useState("");
   const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [stock, setStock] = useState<StockResponse | null>(null);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [lowStock, setLowStock] = useState<LowStockResponse | null>(null);
@@ -354,7 +356,7 @@ function CheckStockPageContent() {
         sortBy,
         sortOrder,
         includeZero: true,
-        ...(search.trim() ? { search: search.trim() } : {}),
+        ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
         ...(scopedWarehouseId ? { warehouseId: scopedWarehouseId } : {}),
         ...(brandId ? { brandId } : {}),
       };
@@ -392,7 +394,7 @@ function CheckStockPageContent() {
     effectiveWarehouseId,
     brandId,
     movementType,
-    search,
+    debouncedSearch,
     page,
     limit,
     sortBy,
@@ -402,6 +404,10 @@ function CheckStockPageContent() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    resetPage();
+  }, [debouncedSearch, resetPage]);
 
   function handleFilterChange(setter: (v: string) => void, value: string) {
     setter(value);
@@ -450,7 +456,7 @@ function CheckStockPageContent() {
       tabLabel: TAB_LABELS[activeTab],
       warehouseName: warehouses.find((w) => w.id === warehouseId)?.name,
       brandName: brands.find((b) => b.id === brandId)?.name,
-      search: search.trim() || undefined,
+      search: debouncedSearch.trim() || undefined,
       movementType: movementType || undefined,
       sortBy,
       sortOrder,
@@ -465,7 +471,7 @@ function CheckStockPageContent() {
         sortBy,
         sortOrder,
         includeZero: true,
-        ...(search.trim() ? { search: search.trim() } : {}),
+        ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
         ...(warehouseId ? { warehouseId } : {}),
         ...(brandId ? { brandId } : {}),
       };
@@ -540,13 +546,9 @@ function CheckStockPageContent() {
           <FilterField label="Search" className="min-w-0 flex-1 lg:max-w-xl">
             <SearchInputWithSuggestions
               value={search}
-              onChange={(value) => {
-                setSearch(value);
-                resetPage();
-              }}
+              onChange={setSearch}
               onSelect={(suggestion) => {
                 setSearch(suggestion.searchTerm);
-                resetPage();
               }}
               fetchSuggestions={fetchProductSuggestions}
               placeholder="Product, brand, warehouse…"
