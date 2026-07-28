@@ -845,7 +845,6 @@ export const api = {
     },
     confirmSales: (data: {
       fileName?: string;
-      warehouseId: string;
       vouchers: SalesImportConfirmVoucher[];
     }) =>
       apiClient<SalesImportResult>("/imports/sales/confirm", {

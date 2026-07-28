@@ -20,6 +20,7 @@ import { validatePositiveInteger } from "@/lib/validation/quantity";
 import { productSelectionGridItem } from "@/lib/products/productSelectionGrid";
 import { useWarehouseProductBalances } from "@/hooks/useWarehouseProductBalances";
 import { StockQuantityEntry } from "@/components/stock/StockQuantityEntry";
+import { ProductQuickStockGrid } from "@/components/stock/ProductQuickStockGrid";
 import type { Brand, Product, Warehouse } from "@/types/master";
 import type { PendingTransfer } from "@/types/stock";
 
@@ -231,7 +232,9 @@ export function StockInForm({
     setLines([]);
     setAddProductId("");
     setAddQuantity("");
-    setStep(multiMode ? "cart" : "product");
+    setError("");
+    setSuccess("");
+    setStep("product");
   }
 
   function startAddProduct() {
@@ -491,16 +494,16 @@ export function StockInForm({
         ? [{ label: "Warehouse", value: selectedWarehouse.name }]
         : []),
     { label: "Brand", value: selectedBrand?.name },
-    ...(multiMode
-      ? step === "addProduct" || step === "addQuantity"
-        ? [
-            {
-              label: "Adding",
-              value: selectedAddProduct?.name ?? "Product",
-            },
-          ]
-        : [{ label: "Products", value: lines.length ? String(lines.length) : undefined }]
-      : [{ label: "Product", value: selectedProduct?.name }]),
+    {
+      label: "Product",
+      value: multiMode
+        ? step === "product"
+          ? selectedBrand?.name
+            ? "Enter qty"
+            : undefined
+          : undefined
+        : selectedProduct?.name,
+    },
   ];
 
   return (
@@ -556,6 +559,64 @@ export function StockInForm({
           loading={loadingBrands}
           emptyMessage="No brands found. Add brands first."
         />
+      )}
+
+      {step === "product" && multiMode && (
+        <div className="space-y-4">
+          {availabilityError ? (
+            <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {availabilityError}
+            </p>
+          ) : null}
+          <SearchInputWithSuggestions
+            value={productSearch}
+            onChange={setProductSearch}
+            onSelect={(suggestion) => {
+              setProductSearch(suggestion.searchTerm);
+            }}
+            fetchSuggestions={fetchProductSuggestions}
+            placeholder="Search primary or secondary name…"
+            ariaLabel="Search products"
+            inputClassName="form-input w-full !pl-11"
+            emptyMessage={(term) => `No products match “${term}”`}
+          />
+          <ProductQuickStockGrid
+            key={brandId}
+            title="Select product"
+            subtitle={
+              selectedBrand
+                ? `Brand: ${selectedBrand.name}${
+                    selectedWarehouse ? ` · ${selectedWarehouse.name}` : ""
+                  }`
+                : undefined
+            }
+            products={filteredProducts}
+            brandId={brandId}
+            brandName={selectedBrand?.name}
+            warehouseId={resolvedWarehouseId || undefined}
+            loading={loadingProducts || loadingProductBalances}
+            quantityFor={quantityFor}
+            loadingQuantity={loadingProductBalances}
+            emptyMessage={
+              productSearch.trim()
+                ? "No products match your search"
+                : "No products for this brand. Add products first."
+            }
+            onSuccess={(msg) => {
+              setError("");
+              setSuccess(msg);
+              onSuccess?.(msg);
+            }}
+            onError={(msg) => {
+              if (!msg) {
+                setError("");
+                return;
+              }
+              setSuccess("");
+              setError(msg);
+            }}
+          />
+        </div>
       )}
 
       {step === "cart" && multiMode && (
@@ -645,7 +706,7 @@ export function StockInForm({
         </form>
       )}
 
-      {(step === "product" || step === "addProduct") && (
+      {((step === "product" && !multiMode) || step === "addProduct") && (
         <div className="space-y-4">
           {availabilityError ? (
             <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">

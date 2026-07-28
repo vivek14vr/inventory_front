@@ -16,18 +16,19 @@ import {
 } from "@/lib/products/productUnits";
 import { matchesProductSearch } from "@/lib/products/productNames";
 import { validatePositiveInteger } from "@/lib/validation/quantity";
-import { productSelectionGridItem } from "@/lib/products/productSelectionGrid";
 import { useWarehouseProductBalances } from "@/hooks/useWarehouseProductBalances";
-import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
-import { StockQuantityEntry } from "@/components/stock/StockQuantityEntry";
-import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import {
+  ProductQuickStockGrid,
+  type CollectedStockItem,
+} from "@/components/stock/ProductQuickStockGrid";
 import type { Brand, Product, Warehouse } from "@/types/master";
 
-type DirectSellStep = "warehouse" | "cart" | "addBrand" | "addProduct" | "addQuantity";
+type DirectSellStep = "warehouse" | "cart" | "brand" | "product";
 
 type SaleLine = {
   id: string;
   brandId: string;
+  brandName: string;
   productId: string;
   product: Product;
   quantity: string;
@@ -66,10 +67,7 @@ export function DirectSellForm({
 
   const [warehouseId, setWarehouseId] = useState(defaultWarehouseId);
   const [saleLines, setSaleLines] = useState<SaleLine[]>([]);
-  const [addBrandId, setAddBrandId] = useState("");
-  const [addProductId, setAddProductId] = useState("");
-  const [addQuantity, setAddQuantity] = useState("");
-  const [addQuantityMode, setAddQuantityMode] = useState<QuantityEntryMode>("stockUnit");
+  const [brandId, setBrandId] = useState("");
   const [productSearch, setProductSearch] = useState("");
 
   const [clientName, setClientName] = useState("");
@@ -78,9 +76,6 @@ export function DirectSellForm({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [currentBalance, setCurrentBalance] = useState<number | null>(null);
-  const [loadingBalance, setLoadingBalance] = useState(false);
-  const [balanceError, setBalanceError] = useState("");
 
   const resolvedWarehouseId = resolveWarehouseId(
     warehouseId,
@@ -97,8 +92,7 @@ export function DirectSellForm({
   }, [warehouses, allowedWarehouseIds]);
 
   const selectedWarehouse = warehouseOptions.find((w) => w.id === resolvedWarehouseId);
-  const selectedAddBrand = brands.find((b) => b.id === addBrandId);
-  const selectedAddProduct = products.find((p) => p.id === addProductId);
+  const selectedBrand = brands.find((b) => b.id === brandId);
   const filteredProducts = products.filter(
     (p) => p.isActive && matchesProductSearch(p, productSearch)
   );
@@ -112,8 +106,8 @@ export function DirectSellForm({
   );
   const { loading: loadingProductBalances, quantityFor, error: availabilityError } =
     useWarehouseProductBalances(resolvedWarehouseId, {
-      enabled: step === "addProduct",
-      brandId: addBrandId,
+      enabled: step === "product",
+      brandId,
     });
 
   useEffect(() => {
@@ -139,7 +133,7 @@ export function DirectSellForm({
   }, []);
 
   useEffect(() => {
-    if (step !== "cart" && step !== "addBrand" && step !== "addProduct") return;
+    if (step !== "brand" && step !== "product") return;
     let cancelled = false;
     setLoadingBrands(true);
     setError("");
@@ -162,15 +156,16 @@ export function DirectSellForm({
   }, [step]);
 
   useEffect(() => {
-    if (!addBrandId) {
+    if (!brandId) {
       setProducts([]);
+      setLoadingProducts(false);
       return;
     }
     let cancelled = false;
     setLoadingProducts(true);
     setError("");
     api.products
-      .listAll({ brandId: addBrandId })
+      .listAll({ brandId })
       .then((data) => {
         if (!cancelled) setProducts(data);
       })
@@ -185,115 +180,53 @@ export function DirectSellForm({
     return () => {
       cancelled = true;
     };
-  }, [addBrandId]);
-
-  useEffect(() => {
-    if (step !== "addQuantity" || !resolvedWarehouseId || !addProductId) {
-      setCurrentBalance(null);
-      setBalanceError("");
-      return;
-    }
-    let cancelled = false;
-    setLoadingBalance(true);
-    setBalanceError("");
-    api.stock
-      .balances({ warehouseId: resolvedWarehouseId, productId: addProductId })
-      .then((result) => {
-        if (!cancelled) {
-          setCurrentBalance(result.items[0]?.quantity ?? 0);
-          setBalanceError("");
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setCurrentBalance(null);
-          setBalanceError(
-            err instanceof ApiError ? err.message : "Could not load stock level"
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingBalance(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [step, resolvedWarehouseId, addProductId]);
-
-  const addEnteredBaseQty = useMemo(() => {
-    const entered = parseInt(addQuantity, 10);
-    if (!Number.isFinite(entered) || entered <= 0) return 0;
-    return quantityEntryToBase(entered, addQuantityMode, selectedAddProduct);
-  }, [addQuantity, addQuantityMode, selectedAddProduct]);
-
-  const addExceedsAvailable =
-    currentBalance !== null && addEnteredBaseQty > 0 && addEnteredBaseQty > currentBalance;
-  const cannotAddQuantity =
-    step === "addQuantity" && (loadingBalance || currentBalance === null || Boolean(balanceError));
+  }, [brandId]);
 
   function selectWarehouse(id: string) {
     setWarehouseId(id);
+    setError("");
+    setSuccess("");
     setStep("cart");
   }
 
-  function startAddProduct() {
-    setAddBrandId("");
-    setAddProductId("");
-    setAddQuantity("");
-    setAddQuantityMode("stockUnit");
+  function startAddProducts() {
+    setBrandId("");
     setProductSearch("");
-    setStep("addBrand");
-  }
-
-  function selectAddBrand(id: string) {
-    setAddBrandId(id);
-    setAddProductId("");
-    setProductSearch("");
-    setStep("addProduct");
-  }
-
-  function selectAddProduct(id: string) {
-    if (existingProductIds.has(id)) {
-      setError("This product is already on the sale");
-      return;
-    }
     setError("");
-    setAddProductId(id);
-    setAddQuantity("");
-    setAddQuantityMode("stockUnit");
-    setStep("addQuantity");
+    setStep("brand");
   }
 
-  function confirmAddProduct() {
-    if (!selectedAddProduct || !addBrandId) return;
-    if (cannotAddQuantity || addExceedsAvailable || addEnteredBaseQty <= 0) return;
-    if (existingProductIds.has(selectedAddProduct.id)) {
-      setError("This product is already on the sale");
-      setStep("cart");
-      return;
-    }
-
-    setSaleLines((prev) => {
-      if (prev.some((line) => line.productId === selectedAddProduct.id)) {
-        return prev;
-      }
-      return [
-        ...prev,
-        {
-          id: newLineId(),
-          brandId: addBrandId,
-          productId: selectedAddProduct.id,
-          product: selectedAddProduct,
-          quantity: addQuantity,
-          quantityMode: addQuantityMode,
-        },
-      ];
-    });
-    setAddBrandId("");
-    setAddProductId("");
-    setAddQuantity("");
-    setAddQuantityMode("stockUnit");
+  function selectBrand(id: string) {
+    setBrandId(id);
     setProductSearch("");
+    setError("");
+    setStep("product");
+  }
+
+  function handleCollect(items: CollectedStockItem[]) {
+    const brand = brands.find((b) => b.id === brandId);
+    setSaleLines((prev) => {
+      const next = [...prev];
+      for (const item of items) {
+        if (next.some((line) => line.productId === item.productId)) continue;
+        next.push({
+          id: newLineId(),
+          brandId,
+          brandName: brand?.name ?? "Brand",
+          productId: item.productId,
+          product: item.product,
+          quantity: item.quantity,
+          quantityMode: item.quantityMode,
+        });
+      }
+      return next;
+    });
+    setBrandId("");
+    setProductSearch("");
+    setError("");
+    setSuccess(
+      `Added ${items.length} product${items.length === 1 ? "" : "s"} to the sale`
+    );
     setStep("cart");
   }
 
@@ -303,15 +236,11 @@ export function DirectSellForm({
 
   function goBack() {
     setError("");
-    if (step === "addQuantity") {
-      setAddProductId("");
-      setAddQuantity("");
-      setStep("addProduct");
-    } else if (step === "addProduct") {
-      setAddBrandId("");
-      setAddProductId("");
-      setStep("addBrand");
-    } else if (step === "addBrand") {
+    if (step === "product") {
+      setBrandId("");
+      setProductSearch("");
+      setStep("brand");
+    } else if (step === "brand") {
       setStep("cart");
     } else if (step === "cart" && pickWarehouse) {
       setStep("warehouse");
@@ -319,9 +248,8 @@ export function DirectSellForm({
   }
 
   const showBackButton =
-    step === "addBrand" ||
-    step === "addProduct" ||
-    step === "addQuantity" ||
+    step === "brand" ||
+    step === "product" ||
     (step === "cart" && pickWarehouse);
 
   function resetFlow() {
@@ -329,10 +257,8 @@ export function DirectSellForm({
     setClientName("");
     setInvoiceNumber("");
     setNotes("");
-    setAddBrandId("");
-    setAddProductId("");
-    setAddQuantity("");
-    setAddQuantityMode("stockUnit");
+    setBrandId("");
+    setProductSearch("");
     setStep(pickWarehouse ? "warehouse" : "cart");
     if (!pickWarehouse) {
       setWarehouseId(defaultWarehouseId);
@@ -402,9 +328,19 @@ export function DirectSellForm({
       ? [{ label: "From", value: selectedWarehouse?.name }]
       : []),
     { label: "Sale", value: clientName.trim() || undefined },
-    ...(step === "addBrand" || step === "addProduct" || step === "addQuantity"
-      ? [{ label: "Adding", value: selectedAddProduct?.name ?? selectedAddBrand?.name }]
-      : [{ label: "Products", value: saleLines.length ? String(saleLines.length) : undefined }]),
+    ...(step === "brand" || step === "product"
+      ? [
+          {
+            label: "Adding",
+            value: selectedBrand?.name ?? "Brand",
+          },
+        ]
+      : [
+          {
+            label: "Products",
+            value: saleLines.length ? String(saleLines.length) : undefined,
+          },
+        ]),
   ];
 
   return (
@@ -434,7 +370,7 @@ export function DirectSellForm({
           <div className="rounded-2xl border-2 border-stone-200 bg-white p-5 sm:p-6">
             <h2 className="text-xl font-bold text-stone-900">Direct sale</h2>
             <p className="mt-1 text-base text-stone-500">
-              Add one or more products for the same client and invoice
+              Enter client details, then add products by brand
               {selectedWarehouse ? ` · From ${selectedWarehouse.name}` : ""}
             </p>
 
@@ -448,6 +384,7 @@ export function DirectSellForm({
                   value={clientName}
                   onChange={(e) => setClientName(e.target.value)}
                   className="form-input mt-2"
+                  placeholder="Who is buying?"
                 />
               </div>
               <div>
@@ -466,14 +403,14 @@ export function DirectSellForm({
             <div className="mt-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h3 className="text-base font-bold text-stone-800">Products</h3>
-                <Button type="button" size="sm" variant="secondary" onClick={startAddProduct}>
-                  Add product
+                <Button type="button" size="sm" variant="secondary" onClick={startAddProducts}>
+                  Add products
                 </Button>
               </div>
 
               {saleLines.length === 0 ? (
                 <p className="mt-3 rounded-xl border-2 border-dashed border-stone-200 bg-stone-50 px-4 py-6 text-center text-sm text-stone-500">
-                  No products yet. Add at least one product to record the sale.
+                  No products yet. Add products from a brand, then add more brands if needed.
                 </p>
               ) : (
                 <ul className="mt-3 space-y-3">
@@ -483,6 +420,9 @@ export function DirectSellForm({
                       className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3"
                     >
                       <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">
+                          {line.brandName}
+                        </p>
                         <p className="font-semibold text-stone-900">{line.product.name}</p>
                         {line.product.secondaryName?.trim() ? (
                           <p className="text-sm text-stone-500">{line.product.secondaryName}</p>
@@ -537,20 +477,20 @@ export function DirectSellForm({
         </form>
       )}
 
-      {step === "addBrand" && (
+      {step === "brand" && (
         <SelectionGrid
           title="Select brand"
-          subtitle="Choose a brand for the next product"
+          subtitle="Choose a brand, enter quantities for its products, then add them to the sale"
           items={brands
             .filter((b) => b.isActive)
             .map((b) => ({ id: b.id, title: b.name }))}
-          onSelect={selectAddBrand}
+          onSelect={selectBrand}
           loading={loadingBrands}
           emptyMessage="No brands found"
         />
       )}
 
-      {step === "addProduct" && (
+      {step === "product" && (
         <div className="space-y-4">
           {availabilityError ? (
             <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
@@ -562,7 +502,6 @@ export function DirectSellForm({
             onChange={setProductSearch}
             onSelect={(suggestion) => {
               setProductSearch(suggestion.searchTerm);
-              selectAddProduct(suggestion.id);
             }}
             fetchSuggestions={fetchProductSuggestions}
             placeholder="Search primary or secondary name…"
@@ -570,99 +509,43 @@ export function DirectSellForm({
             inputClassName="form-input w-full !pl-11"
             emptyMessage={(term) => `No products match “${term}”`}
           />
-          <SelectionGrid
+          <ProductQuickStockGrid
+            key={brandId}
+            action="collect"
             title="Select product"
             subtitle={
-              selectedAddBrand
-                ? `Brand: ${selectedAddBrand.name}${
-                    existingProductIds.size
-                      ? " · Already on sale: hidden from list if selected"
-                      : ""
+              selectedBrand
+                ? `Brand: ${selectedBrand.name}${
+                    selectedWarehouse ? ` · From ${selectedWarehouse.name}` : ""
                   }`
                 : undefined
             }
-            items={filteredProducts
-              .filter((p) => !existingProductIds.has(p.id))
-              .map((p) =>
-                productSelectionGridItem(p, {
-                  quantity: quantityFor(p.id),
-                  loadingQuantity: loadingProductBalances,
-                })
-              )}
-            onSelect={selectAddProduct}
+            products={filteredProducts}
+            brandId={brandId}
+            brandName={selectedBrand?.name}
+            warehouseId={resolvedWarehouseId || undefined}
             loading={loadingProducts || loadingProductBalances}
+            quantityFor={quantityFor}
+            loadingQuantity={loadingProductBalances}
+            excludeProductIds={existingProductIds}
+            submitLabel="Add to sale"
             emptyMessage={
               productSearch.trim()
                 ? "No products match your search"
-                : "No products for this brand"
+                : existingProductIds.size > 0
+                  ? "All products from this brand are already on the sale"
+                  : "No products for this brand"
             }
+            onCollect={handleCollect}
+            onError={(msg) => {
+              if (!msg) {
+                setError("");
+                return;
+              }
+              setSuccess("");
+              setError(msg);
+            }}
           />
-        </div>
-      )}
-
-      {step === "addQuantity" && selectedAddProduct && (
-        <div className="space-y-5">
-          <div className="rounded-2xl border-2 border-stone-200 bg-white p-5 sm:p-6">
-            <h2 className="text-xl font-bold text-stone-900">Quantity</h2>
-            <p className="mt-1 text-base text-stone-500">
-              {selectedAddProduct.name}
-              {selectedAddProduct.secondaryName?.trim()
-                ? ` · ${selectedAddProduct.secondaryName}`
-                : ""}
-            </p>
-
-            {resolvedWarehouseId ? (
-              <div className="mt-5 rounded-xl border-2 border-stone-200 bg-stone-50 px-4 py-3">
-                <p className="text-sm font-semibold text-stone-600">
-                  Available at {selectedWarehouse?.name ?? "warehouse"}
-                </p>
-                <div className="mt-1 min-h-8">
-                  {loadingBalance ? (
-                    <LoadingSpinner />
-                  ) : currentBalance !== null ? (
-                    <StockQuantityDisplay
-                      quantity={currentBalance}
-                      stockUnit={selectedAddProduct.stockUnit}
-                      unitsPerStockUnit={selectedAddProduct.unitsPerStockUnit}
-                      baseUnit={selectedAddProduct.baseUnit}
-                      size="lg"
-                    />
-                  ) : balanceError ? (
-                    <p className="text-sm font-semibold text-red-600">{balanceError}</p>
-                  ) : (
-                    <p className="text-sm text-stone-500">Could not load stock level</p>
-                  )}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="mt-5">
-              <StockQuantityEntry
-                product={selectedAddProduct}
-                quantity={addQuantity}
-                onQuantityChange={setAddQuantity}
-                mode={addQuantityMode}
-                onModeChange={setAddQuantityMode}
-              />
-            </div>
-
-            {addExceedsAvailable ? (
-              <p className="mt-3 text-sm font-semibold text-red-600">
-                Not enough stock. Available:{" "}
-                {formatBaseQuantityWithStockUnit(currentBalance ?? 0, selectedAddProduct)}.
-              </p>
-            ) : null}
-
-            <Button
-              type="button"
-              size="xl"
-              disabled={addExceedsAvailable || cannotAddQuantity || addEnteredBaseQty <= 0}
-              className="mt-6 w-full"
-              onClick={confirmAddProduct}
-            >
-              Add to sale
-            </Button>
-          </div>
         </div>
       )}
     </div>

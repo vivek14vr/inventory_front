@@ -165,6 +165,11 @@ export type SalesImportLinePreview = {
   brandCategory: "matched" | "new";
   category: "matched" | "unmatched";
   errors: string[];
+  warehouseHint?: "vasai" | "goregaon";
+  narrationRaw?: string;
+  warehouseId?: string;
+  warehouseName?: string;
+  warehouseCode?: string;
   matchedBrand?: {
     id: string;
     name: string;
@@ -211,6 +216,8 @@ export type SalesImportConfirmLine = {
   productName: string;
   brandName: string;
   quantity: number;
+  warehouseId: string;
+  ignore?: boolean;
   brandAction: "merge" | "create";
   mergeTargetBrandId?: string;
   action: "merge" | "create";
@@ -238,6 +245,7 @@ export type SalesImportResultLine = {
   sellDate: string;
   productName: string;
   quantity: number;
+  warehouseId?: string;
   mergeTargetProductId?: string;
   status: "SUCCESS" | "FAILED" | "SKIPPED";
   message?: string;
@@ -257,6 +265,7 @@ export type SalesImportResultVoucher = {
 export type SalesImportResult = {
   fileName?: string;
   warehouse: { id: string; name: string; code: string };
+  warehouses?: Array<{ id: string; name: string; code: string }>;
   totalVouchers: number;
   totalLines: number;
   successCount: number;
