@@ -191,6 +191,11 @@ export type SalesImportVoucherPreview = {
   invoiceNumber: string;
   clientCategory: "matched" | "new";
   errors: string[];
+  narrationRaw?: string;
+  warehouseHint?: "vasai" | "goregaon";
+  warehouseId?: string;
+  warehouseName?: string;
+  warehouseCode?: string;
   matchedClient?: {
     id: string;
     name: string;

@@ -303,7 +303,7 @@ export function SalesImportPanel() {
           continue;
         }
         if (!line.warehouseId) {
-          validationErrors.push(`Row ${line.rowNumber}: warehouse could not be resolved from Narration`);
+          validationErrors.push(`Row ${line.rowNumber}: warehouse could not be resolved from invoice Narration`);
           continue;
         }
         const qty = Number.parseInt(state.quantity, 10);
@@ -459,15 +459,15 @@ export function SalesImportPanel() {
         onReset={reset}
         tip={
           <ImportTip>
-            Warehouse is taken from column F (Narration): empty → Goregaon, contains
-            &quot;vasai&quot; → Vasai. Mixed warehouses in one invoice become separate
-            stock-outs. Use Ignore on a line to skip it.
+            Warehouse is taken from Narration on the invoice/client row: empty →
+            Goregaon, contains &quot;vasai&quot; → Vasai. Each invoice uses one
+            warehouse for all its product lines. Use Skip on a line to ignore it.
           </ImportTip>
         }
         example={
           <ImportExampleCard
             title="Column layout"
-            footnote="Header row is detected automatically. Narration (F) chooses warehouse; Quantity is usually in G. Older sheets without Narration default every line to Goregaon."
+            footnote="Header row is detected automatically. Narration on the dated invoice row chooses warehouse; Quantity is usually in G. Older sheets without Narration default every invoice to Goregaon."
           >
             <table className="w-full min-w-[900px] text-left text-sm">
               <thead>
@@ -484,21 +484,28 @@ export function SalesImportPanel() {
                   <td className="px-3 py-2.5">01-Jul-26</td>
                   <td className="px-3 py-2.5 font-medium">Sandhya (client)</td>
                   <td className="px-3 py-2.5">1748</td>
-                  <td className="px-3 py-2.5 text-stone-400">ignore</td>
+                  <td className="px-3 py-2.5">vasai</td>
                   <td className="px-3 py-2.5 text-stone-400">ignore</td>
                 </tr>
                 <tr className="border-t border-stone-100 bg-white/70 text-stone-800">
                   <td className="px-3 py-2.5 text-stone-400">—</td>
                   <td className="px-3 py-2.5">1000ml Rectangle Container (DP)</td>
                   <td className="px-3 py-2.5 text-stone-400">—</td>
-                  <td className="px-3 py-2.5">vasai</td>
+                  <td className="px-3 py-2.5 text-stone-400">—</td>
                   <td className="px-3 py-2.5 tabular-nums">1000</td>
+                </tr>
+                <tr className="border-t border-stone-100 bg-white/70 text-stone-800">
+                  <td className="px-3 py-2.5">02-Jul-26</td>
+                  <td className="px-3 py-2.5 font-medium">Other client</td>
+                  <td className="px-3 py-2.5">1749</td>
+                  <td className="px-3 py-2.5 text-stone-400">(empty → Goregaon)</td>
+                  <td className="px-3 py-2.5 text-stone-400">ignore</td>
                 </tr>
                 <tr className="border-t border-stone-100 bg-white/70 text-stone-800">
                   <td className="px-3 py-2.5 text-stone-400">—</td>
                   <td className="px-3 py-2.5">7 inch plate</td>
                   <td className="px-3 py-2.5 text-stone-400">—</td>
-                  <td className="px-3 py-2.5 text-stone-400">(empty → Goregaon)</td>
+                  <td className="px-3 py-2.5 text-stone-400">—</td>
                   <td className="px-3 py-2.5 tabular-nums">400</td>
                 </tr>
               </tbody>
@@ -632,7 +639,7 @@ function SalesImportPreviewReview({
           </p>
           <h3 className="mt-1 text-lg font-bold text-stone-900">Confirm stock out</h3>
           <p className="mt-1 text-sm text-stone-500">
-            Warehouse comes from Narration. Skip lines you do not want to import.
+            Warehouse comes from the invoice Narration. Skip lines you do not want to import.
           </p>
         </div>
         <div className="inline-flex rounded-xl border border-stone-200 bg-stone-50 p-1">
@@ -801,6 +808,12 @@ function VoucherReviewCard({
       line.category === "unmatched" &&
       !resolvedLineAction(line, lineActions[line.rowNumber]).ignore
   ).length;
+  const warehouseLabel = voucher.warehouseName
+    ? voucher.warehouseName
+    : voucher.warehouseHint
+      ? `${voucher.warehouseHint} missing`
+      : "No warehouse";
+  const warehouseOk = Boolean(voucher.warehouseId);
 
   return (
     <article className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm shadow-stone-900/[0.03]">
@@ -817,6 +830,7 @@ function VoucherReviewCard({
             <StatusPill tone={voucher.clientCategory === "matched" ? "matched" : "new"}>
               {voucher.clientCategory === "matched" ? "Client matched" : "New client"}
             </StatusPill>
+            <StatusPill tone={warehouseOk ? "neutral" : "error"}>{warehouseLabel}</StatusPill>
             {errorLines > 0 ? (
               <StatusPill tone="error">{errorLines} error{errorLines === 1 ? "" : "s"}</StatusPill>
             ) : null}
@@ -838,7 +852,7 @@ function VoucherReviewCard({
 
       {!collapsed ? (
         <div className="space-y-4 p-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <label className="block text-sm">
               <span className="font-medium text-stone-600">Client</span>
               <input
@@ -861,6 +875,19 @@ function VoucherReviewCard({
                 className="form-input mt-1 w-full"
                 value={resolved.sellDate}
                 onChange={(e) => onUpdateVoucher({ sellDate: e.target.value })}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="font-medium text-stone-600">Warehouse</span>
+              <input
+                className={`form-input mt-1 w-full ${warehouseOk ? "" : "border-red-300"}`}
+                value={warehouseLabel}
+                readOnly
+                title={
+                  voucher.narrationRaw
+                    ? `From Narration: ${voucher.narrationRaw}`
+                    : "From empty Narration on invoice row → Goregaon"
+                }
               />
             </label>
             <label className="block text-sm">
@@ -968,12 +995,6 @@ function LineReviewRow({
   const hasErrors = line.errors.length > 0;
   const ignored = resolved.ignore;
   const editsDisabled = hasErrors || ignored;
-  const warehouseLabel = line.warehouseName
-    ? line.warehouseName
-    : line.warehouseHint
-      ? `${line.warehouseHint} missing`
-      : "No warehouse";
-  const warehouseOk = Boolean(line.warehouseId);
 
   const statusTone = ignored
     ? "skip"
@@ -1013,7 +1034,6 @@ function LineReviewRow({
           Skip
         </label>
         <StatusPill tone={statusTone}>{statusLabel}</StatusPill>
-        <StatusPill tone={warehouseOk ? "neutral" : "error"}>{warehouseLabel}</StatusPill>
         <span className="text-xs text-stone-400">Row {line.rowNumber}</span>
       </div>
 
