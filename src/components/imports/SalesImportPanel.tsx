@@ -808,12 +808,16 @@ function VoucherReviewCard({
       line.category === "unmatched" &&
       !resolvedLineAction(line, lineActions[line.rowNumber]).ignore
   ).length;
+  const lineWarehouse = voucher.lines.find((line) => line.warehouseId || line.warehouseName);
+  const warehouseId = voucher.warehouseId ?? lineWarehouse?.warehouseId;
   const warehouseLabel = voucher.warehouseName
     ? voucher.warehouseName
-    : voucher.warehouseHint
-      ? `${voucher.warehouseHint} missing`
-      : "No warehouse";
-  const warehouseOk = Boolean(voucher.warehouseId);
+    : lineWarehouse?.warehouseName
+      ? lineWarehouse.warehouseName
+      : voucher.warehouseHint || lineWarehouse?.warehouseHint
+        ? `${voucher.warehouseHint ?? lineWarehouse?.warehouseHint} missing`
+        : "No warehouse";
+  const warehouseOk = Boolean(warehouseId);
 
   return (
     <article className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm shadow-stone-900/[0.03]">
