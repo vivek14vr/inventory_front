@@ -13,6 +13,7 @@ import {
 import { downloadFailedSalesImportExcel } from "@/lib/imports/exportFailedSalesImport";
 import { formatSecondaryName } from "@/lib/products/productNames";
 import type {
+  SalesImportConfirmVoucher,
   SalesImportExistingBrand,
   SalesImportExistingClient,
   SalesImportExistingProduct,
@@ -21,6 +22,68 @@ import type {
   SalesImportResult,
   SalesImportVoucherPreview,
 } from "@/types/imports";
+
+/**
+ * Invoices per confirm request. Sized for small production hosts and files
+ * up to ~200 invoices (≈40 sequential batches).
+ */
+const SALES_IMPORT_CONFIRM_BATCH_SIZE = 5;
+/** Brief pause between batches so Node can reclaim memory before the next confirm. */
+const SALES_IMPORT_CONFIRM_BATCH_PAUSE_MS = 200;
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  if (size < 1) return [items];
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function mergeWarehouseList(
+  lists: Array<Array<{ id: string; name: string; code: string }> | undefined>
+): Array<{ id: string; name: string; code: string }> {
+  const byId = new Map<string, { id: string; name: string; code: string }>();
+  for (const list of lists) {
+    for (const warehouse of list ?? []) {
+      byId.set(warehouse.id, warehouse);
+    }
+  }
+  return [...byId.values()];
+}
+
+function mergeSalesImportResults(
+  parts: SalesImportResult[],
+  fileName?: string
+): SalesImportResult {
+  const warehouses = mergeWarehouseList([
+    ...parts.map((part) => part.warehouses),
+    ...parts.map((part) => [part.warehouse]),
+  ]);
+  return {
+    fileName: fileName ?? parts[0]?.fileName,
+    warehouse: warehouses[0] ?? parts[0]!.warehouse,
+    warehouses: warehouses.length > 0 ? warehouses : parts[0]?.warehouses,
+    totalVouchers: parts.reduce((sum, part) => sum + part.totalVouchers, 0),
+    totalLines: parts.reduce((sum, part) => sum + part.totalLines, 0),
+    successCount: parts.reduce((sum, part) => sum + part.successCount, 0),
+    failedCount: parts.reduce((sum, part) => sum + part.failedCount, 0),
+    createdProductCount: parts.reduce(
+      (sum, part) => sum + (part.createdProductCount ?? 0),
+      0
+    ),
+    createdBrandCount: parts.reduce(
+      (sum, part) => sum + (part.createdBrandCount ?? 0),
+      0
+    ),
+    createdClientCount: parts.reduce(
+      (sum, part) => sum + (part.createdClientCount ?? 0),
+      0
+    ),
+    vouchers: parts.flatMap((part) => part.vouchers),
+    rows: parts.flatMap((part) => part.rows),
+  };
+}
 
 type VoucherActionState = {
   clientName: string;
@@ -127,6 +190,13 @@ function mergeProductIdForBrand(
   return undefined;
 }
 
+function normalizeLookupKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s\u200b\u200c\u200d\ufeff]+/g, "");
+}
+
 function suggestProducts(
   products: SalesImportExistingProduct[],
   label: string,
@@ -134,22 +204,27 @@ function suggestProducts(
   limit = 12
 ): SalesImportExistingProduct[] {
   const pool = brandId ? productsForBrand(products, brandId) : products;
-  const needle = label.trim().toLowerCase();
+  const needle = normalizeLookupKey(label);
   if (!needle) return pool.slice(0, limit);
 
   const scored = pool
     .map((product) => {
       const labels = [product.name, product.secondaryName]
         .filter((value): value is string => Boolean(value?.trim()))
-        .map((value) => value.trim().toLowerCase());
+        .map((value) => normalizeLookupKey(value));
 
       let score = 0;
       for (const candidate of labels) {
         if (candidate === needle) score = Math.max(score, 100);
         else if (candidate.includes(needle) || needle.includes(candidate)) score = Math.max(score, 70);
         else {
-          const tokens = needle.split(/\s+/).filter((token) => token.length > 2);
-          const overlap = tokens.filter((token) => candidate.includes(token)).length;
+          const tokens = label
+            .trim()
+            .toLowerCase()
+            .split(/\s+/)
+            .filter((token) => token.length > 2)
+            .map((token) => normalizeLookupKey(token));
+          const overlap = tokens.filter((token) => token && candidate.includes(token)).length;
           score = Math.max(score, overlap * 12);
         }
       }
@@ -207,6 +282,12 @@ export function SalesImportPanel() {
   const [result, setResult] = useState<SalesImportResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [confirmProgress, setConfirmProgress] = useState<{
+    current: number;
+    total: number;
+    invoicesDone: number;
+    invoicesTotal: number;
+  } | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -331,6 +412,7 @@ export function SalesImportPanel() {
     }
 
     setConfirming(true);
+    setConfirmProgress(null);
     setError("");
     setSuccess("");
     try {
@@ -396,10 +478,68 @@ export function SalesImportPanel() {
         return;
       }
 
-      const importResult = await api.imports.confirmSales({
-        fileName: file?.name,
-        vouchers,
+      const batches = chunkArray(vouchers, SALES_IMPORT_CONFIRM_BATCH_SIZE);
+      const batchResults: SalesImportResult[] = [];
+      const invoicesTotal = vouchers.length;
+      let invoicesDone = 0;
+      setConfirmProgress({
+        current: 0,
+        total: batches.length,
+        invoicesDone: 0,
+        invoicesTotal,
       });
+
+      for (let index = 0; index < batches.length; index++) {
+        const batch = batches[index]!;
+        setConfirmProgress({
+          current: index + 1,
+          total: batches.length,
+          invoicesDone,
+          invoicesTotal,
+        });
+        try {
+          const batchResult = await api.imports.confirmSales({
+            fileName: file?.name,
+            vouchers: batch as SalesImportConfirmVoucher[],
+          });
+          batchResults.push(batchResult);
+          invoicesDone += batch.length;
+          setConfirmProgress({
+            current: index + 1,
+            total: batches.length,
+            invoicesDone,
+            invoicesTotal,
+          });
+          if (index < batches.length - 1 && SALES_IMPORT_CONFIRM_BATCH_PAUSE_MS > 0) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, SALES_IMPORT_CONFIRM_BATCH_PAUSE_MS)
+            );
+          }
+        } catch (err) {
+          if (batchResults.length > 0) {
+            const partial = mergeSalesImportResults(batchResults, file?.name);
+            setResult(partial);
+            setPreview(null);
+            setVoucherActions({});
+            setLineActions({});
+            if (fileInputRef.current) fileInputRef.current.value = "";
+            setFile(null);
+            const remaining = invoicesTotal - invoicesDone;
+            setError(
+              `Stopped after ${invoicesDone} of ${invoicesTotal} invoice(s) (batch ${index + 1}/${batches.length}): ${
+                err instanceof ApiError ? err.message : "Import failed"
+              }. ${partial.successCount} line(s) were saved. Re-upload the file and skip the ${invoicesDone} already-imported invoice(s), then confirm the remaining ${remaining}.`
+            );
+            setSuccess(
+              `Partial import: ${partial.successCount} line(s) succeeded across ${invoicesDone} invoice(s); ${partial.failedCount} failed before the interruption.`
+            );
+            return;
+          }
+          throw err;
+        }
+      }
+
+      const importResult = mergeSalesImportResults(batchResults, file?.name);
       setResult(importResult);
       const warehouseLabel =
         importResult.warehouses && importResult.warehouses.length > 1
@@ -416,7 +556,8 @@ export function SalesImportPanel() {
           (importResult.createdClientCount
             ? `, ${importResult.createdClientCount} new client(s)`
             : "") +
-          ` across ${importResult.totalVouchers} invoice(s) at ${warehouseLabel}`
+          ` across ${importResult.totalVouchers} invoice(s) at ${warehouseLabel}` +
+          (batches.length > 1 ? ` · ${batches.length} batches` : "")
       );
       setPreview(null);
       setVoucherActions({});
@@ -427,6 +568,7 @@ export function SalesImportPanel() {
       setError(err instanceof ApiError ? err.message : "Import failed");
     } finally {
       setConfirming(false);
+      setConfirmProgress(null);
     }
   }
 
@@ -436,6 +578,7 @@ export function SalesImportPanel() {
     setFile(null);
     setVoucherActions({});
     setLineActions({});
+    setConfirmProgress(null);
     setError("");
     setSuccess("");
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -461,7 +604,9 @@ export function SalesImportPanel() {
           <ImportTip>
             Warehouse is taken from Narration on the invoice/client row: empty →
             Goregaon, contains &quot;vasai&quot; → Vasai. Each invoice uses one
-            warehouse for all its product lines. Use Skip on a line to ignore it.
+            warehouse for all its product lines. Large files (up to ~200 invoices)
+            confirm in batches of {SALES_IMPORT_CONFIRM_BATCH_SIZE} automatically.
+            Use Skip on a line to ignore it.
           </ImportTip>
         }
         example={
@@ -523,6 +668,7 @@ export function SalesImportPanel() {
           voucherActions={voucherActions}
           lineActions={lineActions}
           confirming={confirming}
+          confirmProgress={confirmProgress}
           allLinesReady={allLinesReady}
           onUpdateVoucher={updateVoucherAction}
           onUpdateLine={updateLineAction}
@@ -555,6 +701,7 @@ function SalesImportPreviewReview({
   voucherActions,
   lineActions,
   confirming,
+  confirmProgress,
   allLinesReady,
   onUpdateVoucher,
   onUpdateLine,
@@ -564,6 +711,12 @@ function SalesImportPreviewReview({
   voucherActions: Record<number, VoucherActionState>;
   lineActions: Record<number, LineActionState>;
   confirming: boolean;
+  confirmProgress: {
+    current: number;
+    total: number;
+    invoicesDone: number;
+    invoicesTotal: number;
+  } | null;
   allLinesReady: boolean;
   onUpdateVoucher: (voucherIndex: number, patch: Partial<VoucherActionState>) => void;
   onUpdateLine: (rowNumber: number, patch: Partial<LineActionState>) => void;
@@ -732,6 +885,15 @@ function SalesImportPreviewReview({
                 · {needsReviewCount} invoice{needsReviewCount === 1 ? "" : "s"} still need review
               </span>
             ) : null}
+            {confirming && confirmProgress && confirmProgress.invoicesTotal > 0 ? (
+              <span className="block text-orange-700 sm:inline sm:before:content-['·_']">
+                {confirmProgress.invoicesDone} of {confirmProgress.invoicesTotal}{" "}
+                invoice{confirmProgress.invoicesTotal === 1 ? "" : "s"}
+                {confirmProgress.total > 1
+                  ? ` · batch ${confirmProgress.current}/${confirmProgress.total}`
+                  : ""}
+              </span>
+            ) : null}
           </div>
           <Button
             type="button"
@@ -740,7 +902,11 @@ function SalesImportPreviewReview({
             loading={confirming}
             onClick={onConfirm}
           >
-            {confirming ? "Importing…" : "Confirm stock out import"}
+            {confirming
+              ? confirmProgress && confirmProgress.invoicesTotal > 1
+                ? `Importing ${confirmProgress.invoicesDone}/${confirmProgress.invoicesTotal} invoices…`
+                : "Importing…"
+              : "Confirm stock out import"}
           </Button>
         </div>
       </div>

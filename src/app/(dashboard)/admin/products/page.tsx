@@ -232,7 +232,7 @@ export default function AdminProductsPage() {
     }
     if (
       !window.confirm(
-        `Delete "${item.name}"? This deactivates the product. It can be reactivated from import or by editing.`
+        `Permanently delete "${item.name}"? This removes the product from the catalogue. Stock history (if any) is kept. Use Deactivate if you only want to hide it.`
       )
     ) {
       return;
@@ -242,7 +242,7 @@ export default function AdminProductsPage() {
     setSuccess("");
     try {
       await api.products.delete(item.id);
-      setSuccess(`Deleted ${item.name}`);
+      setSuccess(`Permanently deleted ${item.name}`);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to delete product");
@@ -260,40 +260,24 @@ export default function AdminProductsPage() {
         }
       />
 
-      <div className="flex flex-col gap-4 rounded-xl border border-zinc-200/80 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="flex min-w-0 flex-1 flex-col gap-4 md:flex-row md:items-end">
-            <div className="min-w-0 flex-1 md:max-w-sm">
-              <label className="block text-sm font-semibold text-stone-700">
-                Search
-              </label>
-              <SearchInputWithSuggestions
-                value={search}
-                onChange={setSearch}
-                onSelect={(suggestion) => {
-                  setSearch(suggestion.searchTerm);
-                }}
-                fetchSuggestions={fetchProductSuggestions}
-                placeholder="Product name…"
-                ariaLabel="Search products"
-                wrapperClassName="mt-2 w-full"
-                inputClassName="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-                emptyMessage={(term) => `No products match “${term}”`}
-              />
-            </div>
-            <ButtonSelect
-              label="Filter by brand"
-              value={filterBrandId}
-              onChange={(v) => {
-                setFilterBrandId(v);
-                resetPage();
+      <div className="space-y-4 rounded-xl border border-zinc-200/80 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0 w-full sm:max-w-md sm:flex-1">
+            <label className="block text-sm font-semibold text-stone-700">
+              Search
+            </label>
+            <SearchInputWithSuggestions
+              value={search}
+              onChange={setSearch}
+              onSelect={(suggestion) => {
+                setSearch(suggestion.searchTerm);
               }}
-              size="sm"
-              className="min-w-0"
-              options={[
-                { value: "", label: "All brands" },
-                ...brands.map((b) => ({ value: b.id, label: b.name })),
-              ]}
+              fetchSuggestions={fetchProductSuggestions}
+              placeholder="Product name…"
+              ariaLabel="Search products"
+              wrapperClassName="mt-2 w-full"
+              inputClassName="w-full rounded-lg border border-zinc-300 py-2 pl-11 pr-3 text-sm"
+              emptyMessage={(term) => `No products match “${term}”`}
             />
           </div>
           {canManage ? (
@@ -308,12 +292,27 @@ export default function AdminProductsPage() {
                 setError("");
                 setSuccess("");
               }}
-              className="shrink-0 self-start lg:self-end"
+              className="w-full shrink-0 sm:w-auto"
             >
               {showForm ? "Cancel" : "Add product"}
             </Button>
           ) : null}
         </div>
+
+        <ButtonSelect
+          label="Filter by brand"
+          value={filterBrandId}
+          onChange={(v) => {
+            setFilterBrandId(v);
+            resetPage();
+          }}
+          size="sm"
+          className="min-w-0 w-full"
+          options={[
+            { value: "", label: "All brands" },
+            ...brands.map((b) => ({ value: b.id, label: b.name })),
+          ]}
+        />
       </div>
 
       <Alert message={error} />
@@ -585,7 +584,7 @@ export default function AdminProductsPage() {
                         title={
                           (p.totalStock ?? 0) > 0
                             ? "Stock must be zero at all warehouses before delete"
-                            : "Delete product"
+                            : "Permanently delete product"
                         }
                         className="text-xs text-red-600 hover:text-red-800 disabled:cursor-not-allowed disabled:text-zinc-300"
                       >

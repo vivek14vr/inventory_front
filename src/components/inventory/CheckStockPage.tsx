@@ -542,24 +542,26 @@ function CheckStockPageContent() {
       ) : null}
 
       <div className="space-y-4 rounded-xl border border-zinc-200/80 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <FilterField label="Search" className="min-w-0 flex-1 lg:max-w-xl">
-            <SearchInputWithSuggestions
-              value={search}
-              onChange={setSearch}
-              onSelect={(suggestion) => {
-                setSearch(suggestion.searchTerm);
-              }}
-              fetchSuggestions={fetchProductSuggestions}
-              placeholder="Product, brand, warehouse…"
-              ariaLabel="Search inventory"
-              inputClassName="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 pl-10 text-sm shadow-sm focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
-              emptyMessage={(term) => `No products match “${term}”`}
-            />
-          </FilterField>
+        <FilterField label="Search" className="min-w-0 w-full max-w-xl">
+          <SearchInputWithSuggestions
+            value={search}
+            onChange={setSearch}
+            onSelect={(suggestion) => {
+              setSearch(suggestion.searchTerm);
+            }}
+            fetchSuggestions={fetchProductSuggestions}
+            placeholder="Product, brand, warehouse…"
+            ariaLabel="Search inventory"
+            wrapperClassName="relative z-30 w-full"
+            inputClassName="w-full rounded-lg border border-zinc-200 bg-white py-2 pl-11 pr-3 text-sm shadow-sm focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+            emptyMessage={(term) => `No products match “${term}”`}
+          />
+        </FilterField>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
           <FilterSelect
             label="Warehouse"
-            className="w-full shrink-0 lg:w-auto lg:min-w-[14rem]"
+            className="min-w-0 w-full sm:w-auto sm:min-w-[14rem]"
             value={warehouseId}
             onChange={(v) => handleFilterChange(setWarehouseId, v)}
             options={[
@@ -575,7 +577,7 @@ function CheckStockPageContent() {
           {activeTab === "movements" ? (
             <FilterSelect
               label="Type"
-              className="w-full shrink-0 lg:w-auto lg:min-w-[12rem]"
+              className="min-w-0 w-full sm:w-auto sm:min-w-[12rem]"
               value={movementType}
               onChange={(v) => handleFilterChange(setMovementType, v)}
               options={[
@@ -589,14 +591,13 @@ function CheckStockPageContent() {
           ) : null}
         </div>
 
-        <FilterSelect
+        <SelectMenu
           label="Brand"
-          className="w-full"
-          optionsClassName="max-h-36 overflow-y-auto pr-1"
+          className="w-full max-w-xl"
           value={brandId}
           onChange={(v) => handleFilterChange(setBrandId, v)}
           options={[
-            { value: "", label: "All" },
+            { value: "", label: "All brands" },
             ...brands.map((b) => ({ value: b.id, label: b.name })),
           ]}
         />

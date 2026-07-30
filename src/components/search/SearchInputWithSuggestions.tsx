@@ -193,7 +193,7 @@ export function SearchInputWithSuggestions({
 
       {showDropdown && (
         <div
-          className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-lg"
+          className="absolute z-50 mt-2 w-full overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-lg"
           role="listbox"
           id={listboxId}
         >
