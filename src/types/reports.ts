@@ -6,7 +6,8 @@ export type ReportType =
   | "transfers"
   | "sales-client"
   | "sales-invoice"
-  | "sales-brand";
+  | "sales-brand"
+  | "internal-actions";
 
 export type ReportFilters = {
   warehouseId?: string;

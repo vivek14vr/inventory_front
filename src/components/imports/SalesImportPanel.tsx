@@ -117,6 +117,7 @@ type VoucherActionState = {
   sellDate: string;
   clientAction: "merge" | "create";
   mergeTargetClientId?: string;
+  ignore: boolean;
 };
 
 type LineActionState = {
@@ -140,6 +141,7 @@ function initVoucherActions(preview: SalesImportPreview): Record<number, Voucher
       sellDate: voucher.sellDate,
       clientAction: voucher.clientCategory === "matched" ? "merge" : "create",
       mergeTargetClientId: voucher.matchedClient?.id,
+      ignore: false,
     };
   }
   return states;
@@ -175,6 +177,7 @@ function resolvedVoucherAction(
     sellDate: state?.sellDate ?? voucher.sellDate,
     clientAction: state?.clientAction ?? (voucher.clientCategory === "matched" ? "merge" : "create"),
     mergeTargetClientId: state?.mergeTargetClientId ?? voucher.matchedClient?.id,
+    ignore: state?.ignore ?? false,
   };
 }
 
@@ -322,6 +325,7 @@ export function SalesImportPanel() {
 
     for (const voucher of preview.vouchers) {
       const voucherState = resolvedVoucherAction(voucher, voucherActions[voucher.voucherIndex]);
+      if (voucherState.ignore) continue;
       if (!voucherState.clientName.trim()) return false;
       if (!voucherState.invoiceNumber.trim()) return false;
       if (voucherState.clientAction === "merge" && !voucherState.mergeTargetClientId) {
@@ -343,6 +347,9 @@ export function SalesImportPanel() {
     }
 
     const importableLines = preview.vouchers.flatMap((voucher) =>
+      resolvedVoucherAction(voucher, voucherActions[voucher.voucherIndex]).ignore
+        ? []
+        :
       voucher.lines.filter((line) => {
         const state = resolvedLineAction(line, lineActions[line.rowNumber]);
         return !state.ignore && line.errors.length === 0 && Boolean(line.warehouseId);
@@ -391,6 +398,7 @@ export function SalesImportPanel() {
     const validationErrors: string[] = [];
     for (const voucher of preview.vouchers) {
       const voucherState = resolvedVoucherAction(voucher, voucherActions[voucher.voucherIndex]);
+      if (voucherState.ignore) continue;
       if (!voucherState.clientName.trim()) {
         validationErrors.push(`Invoice ${voucher.invoiceNumber || voucher.voucherIndex}: client name required`);
       }
@@ -445,6 +453,7 @@ export function SalesImportPanel() {
       const vouchers = preview.vouchers
         .map((voucher) => {
           const voucherState = resolvedVoucherAction(voucher, voucherActions[voucher.voucherIndex]);
+          if (voucherState.ignore) return null;
           return {
             voucherIndex: voucher.voucherIndex,
             headerRowNumber: voucher.headerRowNumber,
@@ -497,7 +506,10 @@ export function SalesImportPanel() {
               ),
           };
         })
-        .filter((voucher) => voucher.lines.length > 0);
+        .filter(
+          (voucher): voucher is NonNullable<typeof voucher> =>
+            Boolean(voucher && voucher.lines.length > 0)
+        );
 
       if (vouchers.length === 0) {
         setError("No product lines left to import (all ignored or invalid)");
@@ -995,6 +1007,7 @@ function VoucherReviewCard({
   onUpdateLine: (rowNumber: number, patch: Partial<LineActionState>) => void;
 }) {
   const resolved = resolvedVoucherAction(voucher, voucherState);
+  const invoiceIgnored = resolved.ignore;
   const clientSuggestions = useMemo(
     () => suggestClients(clients, resolved.clientName),
     [clients, resolved.clientName]
@@ -1020,7 +1033,7 @@ function VoucherReviewCard({
   const warehouseOk = Boolean(warehouseId);
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm shadow-stone-900/[0.03]">
+    <article className={`overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm shadow-stone-900/[0.03] ${invoiceIgnored ? "opacity-65" : ""}`}>
       <button
         type="button"
         onClick={onToggleCollapsed}
@@ -1031,6 +1044,7 @@ function VoucherReviewCard({
             <h3 className="truncate text-base font-bold text-stone-900">
               Invoice {resolved.invoiceNumber || "—"}
             </h3>
+            {invoiceIgnored ? <StatusPill tone="skip">Invoice skipped</StatusPill> : null}
             <StatusPill tone={voucher.clientCategory === "matched" ? "matched" : "new"}>
               {voucher.clientCategory === "matched" ? "Client matched" : "New client"}
             </StatusPill>
@@ -1056,6 +1070,16 @@ function VoucherReviewCard({
 
       {!collapsed ? (
         <div className="space-y-4 p-4">
+          <label className="inline-flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm font-semibold text-stone-700">
+            <input
+              type="checkbox"
+              className="rounded border-stone-300"
+              checked={invoiceIgnored}
+              onChange={(e) => onUpdateVoucher({ ignore: e.target.checked })}
+            />
+            Ignore this entire invoice
+          </label>
+          <fieldset disabled={invoiceIgnored} className="contents">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <label className="block text-sm">
               <span className="font-medium text-stone-600">Client</span>
@@ -1170,6 +1194,7 @@ function VoucherReviewCard({
               />
             ))}
           </div>
+          </fieldset>
         </div>
       ) : null}
     </article>

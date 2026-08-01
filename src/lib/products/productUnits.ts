@@ -63,6 +63,18 @@ export function formatProductUnitSummary(
   return `${per} ${base} = 1 ${getStockUnitLabel(product)}`;
 }
 
+/** Product-facing pack conversion, e.g. "1 carton = 800 pieces". */
+export function formatStockUnitConversion(
+  product?: Partial<ProductUnitFields> | null
+): string | null {
+  if (!usesStockUnit(product)) return null;
+  const per = getUnitsPerStockUnit(product);
+  return `1 ${getStockUnitLabel(product)} = ${per.toLocaleString()} ${pluralizeStockUnit(
+    getBaseUnitLabel(product),
+    per
+  )}`;
+}
+
 export function stockUnitQuestionLabel(
   product?: Partial<ProductUnitFields> | null
 ): string {

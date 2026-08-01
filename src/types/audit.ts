@@ -6,6 +6,11 @@ export type AuditLogEntry = {
   source?: "APPLICATION" | "API" | "SYSTEM";
   outcome?: "SUCCESS" | "FAILURE";
   requestId?: string;
+  revertedAt?: string;
+  revertedBy?: string;
+  revertAuditLogId?: string;
+  canRevert?: boolean;
+  revertReason?: string;
   user?: {
     id: string;
     name: string;

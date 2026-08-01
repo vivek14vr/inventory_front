@@ -15,6 +15,8 @@ type StockQuantityDisplayProps = {
   leadingSign?: "+" | "−" | "";
   /** Color the primary qty for stock-in / stock-out. */
   tone?: "neutral" | "in" | "out";
+  /** Show the full base-unit equivalent below a carton/box quantity. */
+  showBaseEquivalent?: boolean;
   className?: string;
 };
 
@@ -45,6 +47,7 @@ export function StockQuantityDisplay({
   align = "left",
   leadingSign = "",
   tone = "neutral",
+  showBaseEquivalent = false,
   className = "",
 }: StockQuantityDisplayProps) {
   const unitFields = { stockUnit, unitsPerStockUnit, baseUnit };
@@ -72,7 +75,11 @@ export function StockQuantityDisplay({
         {sign}
         {split.fullUnits.toLocaleString()} {packLabel}
       </span>
-      {split.loose > 0 ? (
+      {showBaseEquivalent ? (
+        <span className={`${styles.loose} whitespace-nowrap`}>
+          = {formatBaseUnits(Math.abs(quantity), unitFields)}
+        </span>
+      ) : split.loose > 0 ? (
         <span className={`${styles.loose} whitespace-nowrap`}>
           + {formatBaseUnits(split.loose, unitFields)}
         </span>

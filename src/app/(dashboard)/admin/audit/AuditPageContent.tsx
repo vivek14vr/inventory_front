@@ -18,6 +18,8 @@ import {
 import type { PaginationMeta } from "@/types/pagination";
 import type { AuditFilters, AuditLogEntry, AuditSummary } from "@/types/audit";
 import type { PublicUser } from "@/types/auth";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permission } from "@/lib/auth/permissions";
 
 const ENTITY_OPTIONS = [
   "",
@@ -53,9 +55,13 @@ export function AuditPageContent() {
   const [pagination, setPagination] = useState<PaginationMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<"pdf" | "excel" | null>(null);
+  const [revertingId, setRevertingId] = useState<string | null>(null);
+  const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
   const [userFilterError, setUserFilterError] = useState("");
   const { page, setPage, limit, setLimit, resetPage } = usePagination(20);
+  const { can, isAdmin } = usePermissions();
+  const canRevertActions = isAdmin || can(Permission.REPORTS_REVERT);
 
   useEffect(() => {
     api.audit
@@ -150,6 +156,27 @@ export function AuditPageContent() {
       );
     } finally {
       setDownloading(null);
+    }
+  }
+
+  async function revertLog(log: AuditLogEntry) {
+    if (!log.canRevert || revertingId) return;
+    const confirmed = window.confirm(
+      "Revert this action? The system will verify that no later change conflicts with it, and the revert will be recorded in the audit log."
+    );
+    if (!confirmed) return;
+
+    setRevertingId(log.id);
+    setError("");
+    setSuccess("");
+    try {
+      await api.audit.revert(log.id);
+      setSuccess("Action reverted successfully. A new audit event records the reversal.");
+      await loadAudit();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to revert action");
+    } finally {
+      setRevertingId(null);
     }
   }
 
@@ -314,6 +341,7 @@ export function AuditPageContent() {
       </div>
 
       <Alert message={error} />
+      <Alert message={success} type="success" />
       <Alert message={userFilterError} />
 
       {loading ? (
@@ -328,12 +356,13 @@ export function AuditPageContent() {
                 <th className="px-4 py-3">Action</th>
                 <th className="px-4 py-3">Entity</th>
                 <th className="px-4 py-3 hidden md:table-cell">Details</th>
+                <th className="px-4 py-3 text-right">Revert</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {logs.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
+                  <td colSpan={6} className="px-4 py-8 text-center text-zinc-500">
                     No audit entries match your filters
                   </td>
                 </tr>
@@ -374,6 +403,28 @@ export function AuditPageContent() {
                     <td className="px-4 py-3">{log.entity}</td>
                     <td className="hidden max-w-md px-4 py-3 text-sm text-stone-700 md:table-cell">
                       {formatAuditDetails(log)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {log.revertedAt ? (
+                        <span className="text-xs font-semibold text-emerald-700">Reverted</span>
+                      ) : log.canRevert && canRevertActions ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          loading={revertingId === log.id}
+                          disabled={revertingId !== null}
+                          onClick={() => void revertLog(log)}
+                        >
+                          Revert
+                        </Button>
+                      ) : (
+                        <span
+                          className="text-xs text-zinc-400"
+                          title={log.revertReason ?? (canRevertActions ? "Not reversible" : "Permission required")}
+                        >
+                          —
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))

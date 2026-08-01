@@ -302,6 +302,10 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+    delete: (id: string) =>
+      apiClient<{ deleted: true; id: string; name: string }>(`/brands/${id}`, {
+        method: "DELETE",
+      }),
   },
 
   clients: {
@@ -322,6 +326,10 @@ export const api = {
       apiClient<Client>(`/clients/${id}`, {
         method: "PATCH",
         body: JSON.stringify(data),
+      }),
+    delete: (id: string) =>
+      apiClient<{ deleted: true; id: string; name: string }>(`/clients/${id}`, {
+        method: "DELETE",
       }),
   },
 
@@ -743,6 +751,7 @@ export const api = {
         "sales-client": "/reports/sales/by-client",
         "sales-invoice": "/reports/sales/by-invoice",
         "sales-brand": "/reports/sales/by-brand",
+        "internal-actions": "/reports/internal-actions",
       };
       const params: Record<string, string> = {};
       if (filters?.warehouseId) params.warehouseId = filters.warehouseId;
@@ -765,6 +774,7 @@ export const api = {
         "sales-client": "/reports/sales/by-client",
         "sales-invoice": "/reports/sales/by-invoice",
         "sales-brand": "/reports/sales/by-brand",
+        "internal-actions": "/reports/internal-actions",
       };
       const url = buildApiUrl(paths[type]);
       url.searchParams.set("format", "csv");
@@ -792,6 +802,11 @@ export const api = {
       link.click();
       URL.revokeObjectURL(link.href);
     },
+    revertAction: (auditId: string) =>
+      apiClient<{ reverted: true; auditId: string }>(
+        `/reports/internal-actions/${auditId}/revert`,
+        { method: "POST", body: JSON.stringify({}) }
+      ),
   },
 
   imports: {
@@ -887,6 +902,10 @@ export const api = {
       apiClientPaginated<AuditLogEntry>("/audit", filters),
     summary: () => apiClient<AuditSummary>("/audit/summary"),
     users: () => apiClient<PublicUser[]>("/audit/users"),
+    revert: (auditId: string) =>
+      apiClient<{ reverted: true; auditId: string }>(`/audit/${auditId}/revert`, {
+        method: "POST",
+      }),
   },
 
   checklists: {

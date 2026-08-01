@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
 import { ButtonSelect } from "@/components/ui/ButtonSelect";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
@@ -26,7 +27,16 @@ import type {
 } from "@/types/reports";
 
 const META_COLUMNS = new Set(["stockUnit", "unitsPerStockUnit", "baseUnit"]);
-const HIDDEN_COLUMNS = new Set([...META_COLUMNS, "invoices", "lines", "products"]);
+const HIDDEN_COLUMNS = new Set([
+  ...META_COLUMNS,
+  "invoices",
+  "lines",
+  "products",
+  "id",
+  "canRevert",
+  "revertReason",
+  "revertedAt",
+]);
 const QUANTITY_COLUMNS = new Set(["quantity", "totalUnits", "totalQuantity"]);
 
 const REPORT_OPTIONS: { value: ReportType; label: string }[] = [
@@ -38,6 +48,7 @@ const REPORT_OPTIONS: { value: ReportType; label: string }[] = [
   { value: "sales-client", label: "Sales by client" },
   { value: "sales-invoice", label: "Sales by invoice" },
   { value: "sales-brand", label: "Sales by brand" },
+  { value: "internal-actions", label: "Internal actions" },
 ];
 
 const COLUMN_MAP: Record<ReportType, string[]> = {
@@ -75,6 +86,7 @@ const COLUMN_MAP: Record<ReportType, string[]> = {
     "lineCount",
   ],
   "sales-brand": ["brand", "totalQuantity", "saleCount"],
+  "internal-actions": ["date", "action", "entity", "user", "details", "status"],
 };
 
 const REPORT_TYPES_WITH_DEFAULT_DATES: ReportType[] = [
@@ -148,8 +160,12 @@ function handleReportTypeChange(
 }
 
 export default function AdminReportsPage() {
-  const { isAdmin, warehousesFor } = usePermissions();
+  const { can, isAdmin, warehousesFor } = usePermissions();
   const reportWarehouseIds = warehousesFor(Permission.REPORTS_VIEW);
+  const canViewInternalActions = isAdmin || can(Permission.AUDIT_VIEW);
+  const reportOptions = canViewInternalActions
+    ? REPORT_OPTIONS
+    : REPORT_OPTIONS.filter((option) => option.value !== "internal-actions");
   const [reportType, setReportType] = useState<ReportType>("stock");
   const [filters, setFilters] = useState<ReportFilters>(() => ({
     groupBy: "detail",
@@ -161,6 +177,8 @@ export default function AdminReportsPage() {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [revertingId, setRevertingId] = useState<string | null>(null);
   const [quantityMode, setQuantityMode] = useState<QuantityEntryMode>("stockUnit");
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
@@ -236,6 +254,27 @@ export default function AdminReportsPage() {
     }
   }
 
+  async function revertAction(row: Record<string, unknown>) {
+    const id = typeof row.id === "string" ? row.id : "";
+    if (!id || row.canRevert !== true) return;
+    const confirmed = window.confirm(
+      `Revert ${String(row.action ?? "this action")}? The system will stop if newer data would be overwritten.`
+    );
+    if (!confirmed) return;
+    setRevertingId(id);
+    setError("");
+    setSuccess("");
+    try {
+      await api.reports.revertAction(id);
+      setSuccess("Action reverted successfully. The revert was added to the audit log.");
+      await runReport();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to revert action");
+    } finally {
+      setRevertingId(null);
+    }
+  }
+
   const columns = getColumns(reportType, result);
   const numericCols = numericColumns(columns, result);
   const showQuantityToggle = reportHasStockUnitRows(result, columns);
@@ -243,6 +282,8 @@ export default function AdminReportsPage() {
   const isSalesByClient = reportType === "sales-client";
   const isSalesByInvoice = reportType === "sales-invoice";
   const isSalesByBrand = reportType === "sales-brand";
+  const isInternalActions = reportType === "internal-actions";
+  const canRevertActions = isAdmin || can(Permission.REPORTS_REVERT);
   const expandableReport =
     isSalesByClient || isSalesByInvoice || isSalesByBrand;
 
@@ -294,9 +335,10 @@ export default function AdminReportsPage() {
           label="Report type"
           value={reportType}
           onChange={(v) => handleReportTypeChange(v as ReportType, setReportType, setFilters)}
-          options={REPORT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+          options={reportOptions.map((o) => ({ value: o.value, label: o.label }))}
         />
 
+        {reportType !== "internal-actions" ? (
         <div className="flex flex-wrap gap-3">
           <FilterSelect
             label="Warehouse"
@@ -439,8 +481,15 @@ export default function AdminReportsPage() {
             </p>
           ) : null}
         </div>
+        ) : null}
 
         <div className="flex items-center justify-end">
+          {isInternalActions ? (
+            <p className="mr-auto text-xs text-stone-500">
+              Revert is available only when prior state exists and no newer change would be overwritten.
+            </p>
+          ) : null}
+          {!isInternalActions ? (
           <button
             type="button"
             onClick={downloadCsv}
@@ -449,10 +498,12 @@ export default function AdminReportsPage() {
           >
             {exporting ? "Exporting…" : "Download CSV"}
           </button>
+          ) : null}
         </div>
       </div>
 
       <Alert message={error} />
+      <Alert message={success} type="success" />
 
       {(result || loading) && (
         <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
@@ -511,13 +562,16 @@ export default function AdminReportsPage() {
                       )}
                     </th>
                   ))}
+                  {isInternalActions ? (
+                    <th className="whitespace-nowrap px-5 py-3.5 text-right">Revert</th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody className={loading ? "opacity-50" : undefined}>
                 {!result || result.rows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={columns.length + (expandableReport ? 1 : 0)}
+                      colSpan={columns.length + (expandableReport ? 1 : 0) + (isInternalActions ? 1 : 0)}
                       className="px-5 py-10 text-center text-base font-medium text-stone-400"
                     >
                       No data for selected filters
@@ -697,6 +751,29 @@ export default function AdminReportsPage() {
                           quantityMode,
                         })
                       )}
+                      {isInternalActions ? (
+                        <td className="px-5 py-3 text-right">
+                          {row.canRevert === true && canRevertActions ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              loading={revertingId === row.id}
+                              disabled={revertingId !== null}
+                              onClick={() => void revertAction(row)}
+                            >
+                              Revert
+                            </Button>
+                          ) : (
+                            <span
+                              className="text-xs text-stone-400"
+                              title={String(row.revertReason ?? "Not reversible")}
+                            >
+                              {row.status === "REVERTED" ? "Reverted" : "Not available"}
+                            </span>
+                          )}
+                        </td>
+                      ) : null}
                     </tr>
                   ))
                 )}

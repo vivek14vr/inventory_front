@@ -67,6 +67,22 @@ export default function AdminBrandsPage() {
     }
   }
 
+  async function deleteBrand(item: Brand) {
+    const confirmed = window.confirm(
+      `Permanently delete "${item.name}" from the database? Brands with products or transaction history cannot be deleted. A successful deletion is recorded and can be restored from Audit Log while the name remains available.`
+    );
+    if (!confirmed) return;
+    setError("");
+    setSuccess("");
+    try {
+      await api.brands.delete(item.id);
+      setSuccess(`Brand "${item.name}" permanently deleted`);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to delete brand");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -160,6 +176,12 @@ export default function AdminBrandsPage() {
                       className="text-xs text-zinc-600 hover:text-zinc-900"
                     >
                       {b.isActive ? "Deactivate" : "Activate"}
+                    </button>
+                    <button
+                      onClick={() => void deleteBrand(b)}
+                      className="text-xs font-semibold text-red-600 hover:text-red-800"
+                    >
+                      Delete permanently
                     </button>
                   </td>
                 </tr>

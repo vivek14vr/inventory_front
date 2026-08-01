@@ -25,6 +25,7 @@ export const Permission = {
   PRODUCTS_VIEW: "products.view",
   PRODUCTS_MANAGE: "products.manage",
   REPORTS_VIEW: "reports.view",
+  REPORTS_REVERT: "reports.revert",
   /** @deprecated Prefer imports.products / imports.clients / imports.sales */
   IMPORTS_MANAGE: "imports.manage",
   IMPORTS_PRODUCTS: "imports.products",

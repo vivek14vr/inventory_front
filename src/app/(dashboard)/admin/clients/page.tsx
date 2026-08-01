@@ -18,6 +18,7 @@ export default function AdminClientsPage() {
   const [secondaryName, setSecondaryName] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,6 +79,28 @@ export default function AdminClientsPage() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to update client");
+    }
+  }
+
+  async function deleteClient(item: Client) {
+    if (deletingId) return;
+    const confirmed = window.confirm(
+      `Permanently delete client “${item.name}”? This cannot be done when invoice or stock history references the client.`
+    );
+    if (!confirmed) return;
+
+    setDeletingId(item.id);
+    setError("");
+    setSuccess("");
+    try {
+      await api.clients.delete(item.id);
+      setSuccess(`Client “${item.name}” deleted permanently`);
+      if (editId === item.id) resetForm();
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to delete client");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -194,6 +217,13 @@ export default function AdminClientsPage() {
                       className="text-xs text-zinc-600 hover:text-zinc-900"
                     >
                       {client.isActive ? "Deactivate" : "Activate"}
+                    </button>
+                    <button
+                      onClick={() => void deleteClient(client)}
+                      disabled={deletingId !== null}
+                      className="text-xs font-medium text-red-600 hover:text-red-800 disabled:opacity-50"
+                    >
+                      {deletingId === client.id ? "Deleting…" : "Delete"}
                     </button>
                   </td>
                 </tr>

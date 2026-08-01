@@ -56,6 +56,7 @@ import { isWarehouseLowStock, lowStockSourceLabel } from "@/lib/inventory/lowSto
 import {
   formatBaseQuantityWithStockUnit,
   formatBaseUnits,
+  formatStockUnitConversion,
   formatThresholdPreview,
   getBaseUnitLabel,
   pluralizeStockUnit,
@@ -82,7 +83,6 @@ import {
 import {
   MOVEMENT_FILTER_KINDS,
   movementDetails,
-  movementFilterKindLabel,
   movementTypeBadgeClass,
   movementTypeLabel,
 } from "@/lib/inventory/movementDisplay";
@@ -818,6 +818,7 @@ function ProductDetailCell({
   const primaryName = product.productName;
   const secondaryName = product.secondaryProductName?.trim();
   const nameClassName = "text-base font-semibold text-stone-900";
+  const unitConversion = formatStockUnitConversion(product);
 
   return (
     <div className="min-w-[10rem] max-w-xs">
@@ -841,6 +842,11 @@ function ProductDetailCell({
           {product.brandName}
         </span>
       </p>
+      {unitConversion ? (
+        <p className="mt-1 text-xs font-semibold text-stone-500">
+          Unit: {unitConversion}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -955,6 +961,7 @@ function StockView({
                             baseUnit={product.baseUnit}
                             size="md"
                             align="left"
+                            showBaseEquivalent
                             className="text-orange-800 [&_span:first-child]:!text-orange-800"
                           />
                         </td>
@@ -972,6 +979,7 @@ function StockView({
                                   baseUnit={product.baseUnit}
                                   size="lg"
                                   align="left"
+                                  showBaseEquivalent
                                 />
                               ) : (
                                 <span className="text-base font-medium text-stone-300">—</span>
@@ -1093,6 +1101,7 @@ function StockView({
                         unitsPerStockUnit={product.unitsPerStockUnit}
                         size="md"
                         align="right"
+                        showBaseEquivalent
                         className="text-orange-800 [&_span:first-child]:!text-orange-800"
                       />
                     </div>
@@ -1140,6 +1149,7 @@ function StockView({
                           baseUnit={product.baseUnit}
                               size="md"
                               align="right"
+                              showBaseEquivalent
                             />
                           ) : (
                             <span className="text-base font-medium text-stone-300">—</span>
