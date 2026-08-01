@@ -26,6 +26,7 @@ type InvoiceGroupedTableProps = {
   onSort: (field: InvoiceSortField) => void;
   onLineDraftChange: (movementId: string, quantity: string) => void;
   onSaveGroupQuantities: (group: InvoiceGroup) => void;
+  onAddProduct: (group: InvoiceGroup) => void;
   onDeleteLine: (group: InvoiceGroup, line: InvoiceGroupLine) => void;
 };
 
@@ -239,6 +240,7 @@ export function InvoiceGroupedTable({
   onSort,
   onLineDraftChange,
   onSaveGroupQuantities,
+  onAddProduct,
   onDeleteLine,
 }: InvoiceGroupedTableProps) {
   const [historyLine, setHistoryLine] = useState<InvoiceGroupLine | null>(null);
@@ -448,6 +450,15 @@ export function InvoiceGroupedTable({
                                     className="w-full justify-center"
                                   >
                                     Save quantities
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => onAddProduct(group)}
+                                    className="w-full justify-center"
+                                  >
+                                    + Add product
                                   </Button>
                                   {group.warehouse?.code ? (
                                     <span className="w-full text-center text-[10px] font-bold uppercase tracking-wide text-stone-400">

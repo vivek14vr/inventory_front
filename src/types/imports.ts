@@ -250,10 +250,15 @@ export type SalesImportResultLine = {
   sellDate: string;
   productName: string;
   quantity: number;
+  brandName?: string;
   warehouseId?: string;
+  brandAction?: "merge" | "create";
+  mergeTargetBrandId?: string;
+  action?: "merge" | "create";
   mergeTargetProductId?: string;
   status: "SUCCESS" | "FAILED" | "SKIPPED";
   message?: string;
+  processedAt?: string;
 };
 
 export type SalesImportResultVoucher = {
@@ -265,6 +270,7 @@ export type SalesImportResultVoucher = {
   status: "SUCCESS" | "FAILED" | "PARTIAL";
   message?: string;
   movementCount?: number;
+  processedAt?: string;
 };
 
 export type SalesImportResult = {
@@ -278,6 +284,10 @@ export type SalesImportResult = {
   createdProductCount?: number;
   createdBrandCount?: number;
   createdClientCount?: number;
+  startedAt?: string;
+  completedAt?: string;
+  durationMs?: number;
+  batchCount?: number;
   vouchers: SalesImportResultVoucher[];
   rows: SalesImportResultLine[];
 };

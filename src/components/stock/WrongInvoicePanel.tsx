@@ -27,6 +27,7 @@ import {
   InvoiceGroupedTable,
   type InvoiceSortField,
 } from "@/components/stock/InvoiceGroupedTable";
+import { AddInvoiceProductDialog } from "@/components/stock/AddInvoiceProductDialog";
 
 function toLineDraft(line: InvoiceGroupLine, mode: QuantityEntryMode) {
   return { quantity: thresholdBaseToDisplay(line.quantity, mode, line) };
@@ -54,6 +55,7 @@ export function WrongInvoicePanel() {
   const [quantityMode, setQuantityMode] = useState<QuantityEntryMode>("stockUnit");
   const [savingLinesGroupId, setSavingLinesGroupId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [addingToGroup, setAddingToGroup] = useState<InvoiceGroup | null>(null);
   const [sortBy, setSortBy] = useState<InvoiceSortField>("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const quantityModeRef = useRef<QuantityEntryMode>(quantityMode);
@@ -394,6 +396,7 @@ export function WrongInvoicePanel() {
             onSort={handleSort}
             onLineDraftChange={updateLineDraft}
             onSaveGroupQuantities={saveGroupQuantities}
+            onAddProduct={setAddingToGroup}
             onDeleteLine={deleteLine}
           />
 
@@ -409,6 +412,19 @@ export function WrongInvoicePanel() {
           )}
         </div>
       )}
+
+      {addingToGroup ? (
+        <AddInvoiceProductDialog
+          group={addingToGroup}
+          quantityMode={quantityMode}
+          onClose={() => setAddingToGroup(null)}
+          onAdded={async (productName) => {
+            setSuccess(`Added ${productName} to invoice ${addingToGroup.invoiceNumber}`);
+            setError("");
+            await load(query, warehouseId, page, limit, sortBy, sortOrder);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

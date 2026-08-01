@@ -10,7 +10,7 @@ import {
   ImportTip,
   ImportUploadForm,
 } from "@/components/imports/ImportUploadForm";
-import { downloadFailedSalesImportExcel } from "@/lib/imports/exportFailedSalesImport";
+import { downloadSalesImportReport } from "@/lib/imports/exportSalesImportReport";
 import { formatSecondaryName } from "@/lib/products/productNames";
 import type {
   SalesImportConfirmVoucher,
@@ -60,6 +60,12 @@ function mergeSalesImportResults(
     ...parts.map((part) => part.warehouses),
     ...parts.map((part) => [part.warehouse]),
   ]);
+  const startedTimes = parts
+    .map((part) => part.startedAt)
+    .filter((value): value is string => Boolean(value));
+  const completedTimes = parts
+    .map((part) => part.completedAt)
+    .filter((value): value is string => Boolean(value));
   return {
     fileName: fileName ?? parts[0]?.fileName,
     warehouse: warehouses[0] ?? parts[0]!.warehouse,
@@ -80,8 +86,27 @@ function mergeSalesImportResults(
       (sum, part) => sum + (part.createdClientCount ?? 0),
       0
     ),
+    startedAt: startedTimes.sort()[0],
+    completedAt: completedTimes.sort().at(-1),
+    durationMs: parts.reduce((sum, part) => sum + (part.durationMs ?? 0), 0),
+    batchCount: parts.length,
     vouchers: parts.flatMap((part) => part.vouchers),
     rows: parts.flatMap((part) => part.rows),
+  };
+}
+
+function withImportTiming(
+  result: SalesImportResult,
+  startedAtMs: number,
+  batchCount: number
+): SalesImportResult {
+  const completedAtMs = Date.now();
+  return {
+    ...result,
+    startedAt: new Date(startedAtMs).toISOString(),
+    completedAt: new Date(completedAtMs).toISOString(),
+    durationMs: completedAtMs - startedAtMs,
+    batchCount,
   };
 }
 
@@ -415,6 +440,7 @@ export function SalesImportPanel() {
     setConfirmProgress(null);
     setError("");
     setSuccess("");
+    const importStartedAtMs = Date.now();
     try {
       const vouchers = preview.vouchers
         .map((voucher) => {
@@ -517,7 +543,11 @@ export function SalesImportPanel() {
           }
         } catch (err) {
           if (batchResults.length > 0) {
-            const partial = mergeSalesImportResults(batchResults, file?.name);
+            const partial = withImportTiming(
+              mergeSalesImportResults(batchResults, file?.name),
+              importStartedAtMs,
+              batchResults.length
+            );
             setResult(partial);
             setPreview(null);
             setVoucherActions({});
@@ -539,7 +569,11 @@ export function SalesImportPanel() {
         }
       }
 
-      const importResult = mergeSalesImportResults(batchResults, file?.name);
+      const importResult = withImportTiming(
+        mergeSalesImportResults(batchResults, file?.name),
+        importStartedAtMs,
+        batches.length
+      );
       setResult(importResult);
       const warehouseLabel =
         importResult.warehouses && importResult.warehouses.length > 1
@@ -1357,8 +1391,6 @@ function SalesImportResultSummary({
   result: SalesImportResult;
   sourceFileName?: string;
 }) {
-  const failed = result.rows.filter((row) => row.status === "FAILED");
-
   return (
     <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
       <h3 className="text-lg font-semibold text-stone-900">Import result</h3>
@@ -1382,6 +1414,22 @@ function SalesImportResultSummary({
           <span className="text-indigo-700">New clients: {result.createdClientCount}</span>
         ) : null}
         <span>Invoices: {result.totalVouchers}</span>
+        {result.completedAt ? (
+          <span className="text-stone-600">
+            Completed: {new Date(result.completedAt).toLocaleString("en-IN")}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={() => downloadSalesImportReport(result, sourceFileName)}
+        >
+          Download all import results (.xlsx)
+        </Button>
       </div>
 
       {result.vouchers.length > 0 ? (
@@ -1467,18 +1515,6 @@ function SalesImportResultSummary({
         </div>
       ) : null}
 
-      {failed.length > 0 ? (
-        <div className="mt-4">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => downloadFailedSalesImportExcel(result, sourceFileName)}
-          >
-            Download failed rows (.xlsx)
-          </Button>
-        </div>
-      ) : null}
     </div>
   );
 }

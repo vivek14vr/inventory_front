@@ -3,6 +3,9 @@ export type AuditLogEntry = {
   action: string;
   entity: string;
   entityId?: string;
+  source?: "APPLICATION" | "API" | "SYSTEM";
+  outcome?: "SUCCESS" | "FAILURE";
+  requestId?: string;
   user?: {
     id: string;
     name: string;
@@ -23,6 +26,8 @@ export type AuditFilters = {
   action?: string;
   entity?: string;
   userId?: string;
+  source?: "APPLICATION" | "API" | "SYSTEM";
+  outcome?: "SUCCESS" | "FAILURE";
   dateFrom?: string;
   dateTo?: string;
 };

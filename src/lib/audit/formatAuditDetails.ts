@@ -136,6 +136,83 @@ export function formatAuditDetails(log: AuditLogEntry): string {
   const meta = (log.metadata ?? {}) as Record<string, unknown>;
   const action = log.action;
 
+  if (action === "SYSTEM_CHANGE" || action === "SYSTEM_CHANGE_FAILED") {
+    const operation = metaString(meta.operation) ?? "CHANGE";
+    const route = metaString(meta.route);
+    const fields = Array.isArray(meta.changedFields)
+      ? meta.changedFields.filter((field): field is string => typeof field === "string")
+      : [];
+    const error = metaString(meta.errorMessage);
+    const safeChanges =
+      meta.changes && typeof meta.changes === "object" && !Array.isArray(meta.changes)
+        ? Object.entries(meta.changes as Record<string, unknown>)
+            .map(([field, value]) => {
+              const label = field.replace(/([A-Z])/g, " $1").trim();
+              if (value === "[REDACTED]") return `${label}: changed`;
+              const formatted = metaString(value);
+              return formatted !== undefined ? `${label}: ${formatted}` : undefined;
+            })
+            .filter(Boolean)
+            .slice(0, 8)
+        : [];
+    return [
+      `${operation.charAt(0)}${operation.slice(1).toLowerCase()} ${log.entity}`,
+      route,
+      safeChanges.length
+        ? `Changes: ${safeChanges.join(", ")}`
+        : fields.length
+          ? `Fields: ${fields.join(", ")}`
+          : undefined,
+      action.endsWith("FAILED") ? `Failed${error ? `: ${error}` : ""}` : undefined,
+      log.requestId ? `Request ${log.requestId.slice(0, 8)}` : undefined,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  if (action === "DATA_REPAIRED") {
+    const repair = metaString(meta.repair)?.replace(/_/g, " ").toLowerCase();
+    const previous = metaString(meta.previousQuantity);
+    const restored = metaString(meta.quantity);
+    return [
+      repair ? `Automatic repair: ${repair}` : "Automatic data repair",
+      previous !== undefined && restored !== undefined
+        ? `${previous} → ${restored}`
+        : undefined,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  if (
+    action === "CLIENT_CREATED" ||
+    action === "CLIENT_UPDATED" ||
+    action === "CLIENT_ACTIVATED" ||
+    action === "CLIENT_DEACTIVATED"
+  ) {
+    const name = metaString(meta.name) ?? "Client";
+    const changes = Array.isArray(meta.changes)
+      ? (meta.changes as Array<{ field?: unknown; before?: unknown; after?: unknown }>)
+      : [];
+    const changeText = changes
+      .map((change) => {
+        const field = metaString(change.field);
+        if (!field || field === "isActive") return undefined;
+        const label = field === "secondaryName" ? "Secondary name" : "Name";
+        return `${label}: ${metaString(change.before) ?? "—"} → ${metaString(change.after) ?? "—"}`;
+      })
+      .filter(Boolean);
+    const verb =
+      action === "CLIENT_CREATED"
+        ? "Created"
+        : action === "CLIENT_ACTIVATED"
+          ? "Activated"
+          : action === "CLIENT_DEACTIVATED"
+            ? "Deactivated"
+            : "Updated";
+    return [`${verb} client ${name}`, ...changeText].join(" · ");
+  }
+
   if (
     action.startsWith("TRANSFER_") ||
     (action === "STOCK_OUT" && meta.dispatchType === "TRANSFER")

@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Pagination } from "@/components/ui/Pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { printAuditLogReport } from "@/lib/reports/auditLogPdf";
+import { downloadAuditLogExcel } from "@/lib/reports/auditLogExcel";
 import {
   formatAuditActionLabel,
   formatAuditDetails,
@@ -21,6 +22,7 @@ import type { PublicUser } from "@/types/auth";
 const ENTITY_OPTIONS = [
   "",
   "User",
+  "Client",
   "Warehouse",
   "Brand",
   "Product",
@@ -29,6 +31,10 @@ const ENTITY_OPTIONS = [
   "Checklist",
   "ChecklistCompletion",
   "TallyImport",
+  "Import",
+  "Notification",
+  "SystemSettings",
+  "Inventory",
   "Auth",
 ];
 
@@ -46,7 +52,7 @@ export function AuditPageContent() {
   const [summary, setSummary] = useState<AuditSummary | null>(null);
   const [pagination, setPagination] = useState<PaginationMeta | null>(null);
   const [loading, setLoading] = useState(true);
-  const [downloading, setDownloading] = useState(false);
+  const [downloading, setDownloading] = useState<"pdf" | "excel" | null>(null);
   const [error, setError] = useState("");
   const [userFilterError, setUserFilterError] = useState("");
   const { page, setPage, limit, setLimit, resetPage } = usePagination(20);
@@ -103,36 +109,47 @@ export function AuditPageContent() {
     filters.userId,
     filters.action,
     filters.entity,
+    filters.source,
+    filters.outcome,
     filters.dateFrom,
     filters.dateTo,
   ].filter(Boolean).length;
 
-  async function downloadPdf() {
-    setDownloading(true);
+  async function fetchAllFilteredLogs(): Promise<AuditLogEntry[]> {
+    const allLogs: AuditLogEntry[] = [];
+    let pageNum = 1;
+    let totalPages = 1;
+
+    while (pageNum <= totalPages) {
+      const result = await api.audit.list({ ...filters, page: pageNum, limit: 100 });
+      allLogs.push(...result.items);
+      totalPages = result.pagination.totalPages;
+      pageNum += 1;
+    }
+
+    return allLogs;
+  }
+
+  async function downloadReport(format: "pdf" | "excel") {
+    setDownloading(format);
     setError("");
     try {
-      const allLogs: AuditLogEntry[] = [];
-      let pageNum = 1;
-      let totalPages = 1;
-
-      while (pageNum <= totalPages) {
-        const result = await api.audit.list({ ...filters, page: pageNum, limit: 100 });
-        allLogs.push(...result.items);
-        totalPages = result.pagination.totalPages;
-        pageNum += 1;
+      const allLogs = await fetchAllFilteredLogs();
+      if (format === "excel") {
+        downloadAuditLogExcel(allLogs, { filters, summary });
+      } else {
+        printAuditLogReport(allLogs, { filters, summary });
       }
-
-      printAuditLogReport(allLogs, { filters, summary });
     } catch (err) {
       setError(
         err instanceof ApiError
           ? err.message
           : err instanceof Error
             ? err.message
-            : "Failed to generate PDF report"
+            : `Failed to generate ${format === "excel" ? "Excel" : "PDF"} report`
       );
     } finally {
-      setDownloading(false);
+      setDownloading(null);
     }
   }
 
@@ -142,15 +159,26 @@ export function AuditPageContent() {
         title="Audit log"
         description="User activity and system changes — filter by user, action, or date"
         actions={
-          <Button
-            type="button"
-            variant="secondary"
-            loading={downloading}
-            disabled={loading}
-            onClick={() => void downloadPdf()}
-          >
-            Download PDF
-          </Button>
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              loading={downloading === "excel"}
+              disabled={loading || downloading !== null}
+              onClick={() => void downloadReport("excel")}
+            >
+              Download Excel
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              loading={downloading === "pdf"}
+              disabled={loading || downloading !== null}
+              onClick={() => void downloadReport("pdf")}
+            >
+              Download PDF
+            </Button>
+          </>
         }
       />
 
@@ -201,7 +229,7 @@ export function AuditPageContent() {
             </button>
           )}
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <SelectMenu
             label="User"
             value={filters.userId ?? ""}
@@ -223,6 +251,37 @@ export function AuditPageContent() {
               value: e,
               label: e || "All entities",
             }))}
+          />
+          <SelectMenu
+            label="Source"
+            value={filters.source ?? ""}
+            onChange={(v) =>
+              updateFilter(
+                "source",
+                (v || undefined) as AuditFilters["source"]
+              )
+            }
+            options={[
+              { value: "", label: "All sources" },
+              { value: "APPLICATION", label: "Application event" },
+              { value: "API", label: "API mutation trail" },
+              { value: "SYSTEM", label: "Automatic system event" },
+            ]}
+          />
+          <SelectMenu
+            label="Outcome"
+            value={filters.outcome ?? ""}
+            onChange={(v) =>
+              updateFilter(
+                "outcome",
+                (v || undefined) as AuditFilters["outcome"]
+              )
+            }
+            options={[
+              { value: "", label: "All outcomes" },
+              { value: "SUCCESS", label: "Successful" },
+              { value: "FAILURE", label: "Failed attempts" },
+            ]}
           />
           <div>
             <label className="block text-sm font-semibold text-stone-700">Action</label>
@@ -302,6 +361,15 @@ export function AuditPageContent() {
                         {formatAuditActionLabel(log.action)}
                       </p>
                       <p className="font-mono text-xs text-zinc-400">{log.action}</p>
+                      {log.source || log.outcome === "FAILURE" ? (
+                        <p
+                          className={`mt-1 text-[10px] font-semibold uppercase tracking-wide ${
+                            log.outcome === "FAILURE" ? "text-rose-600" : "text-zinc-400"
+                          }`}
+                        >
+                          {log.source ?? "APPLICATION"} · {log.outcome ?? "SUCCESS"}
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3">{log.entity}</td>
                     <td className="hidden max-w-md px-4 py-3 text-sm text-stone-700 md:table-cell">

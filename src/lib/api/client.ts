@@ -643,6 +643,14 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+    addInvoiceProduct: (
+      movementId: string,
+      data: { productId: string; quantity: number }
+    ) =>
+      apiClient<StockMovement>(`/inventory/movements/${movementId}/invoice/lines`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
     movementInvoiceUpdates: (movementId: string) =>
       apiClient<{
         movementId: string;

@@ -22,7 +22,7 @@ import {
   ProductQuickStockGrid,
   type CollectedStockItem,
 } from "@/components/stock/ProductQuickStockGrid";
-import type { Brand, Product, Warehouse } from "@/types/master";
+import type { Brand, Client, Product, Warehouse } from "@/types/master";
 
 type DirectSellStep = "warehouse" | "cart" | "brand" | "product";
 
@@ -60,6 +60,7 @@ export function DirectSellForm({
   );
 
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingWarehouses, setLoadingWarehouses] = useState(pickWarehouse);
@@ -106,6 +107,27 @@ export function DirectSellForm({
     () => createBrandProductSuggestions(products),
     [products]
   );
+  const fetchClientSuggestions = useMemo(
+    () => async (term: string) => {
+      const normalized = term.trim().toLocaleLowerCase();
+      return clients
+        .filter(
+          (client) =>
+            client.isActive &&
+            (client.name.toLocaleLowerCase().includes(normalized) ||
+              client.secondaryName?.toLocaleLowerCase().includes(normalized))
+        )
+        .slice(0, 8)
+        .map((client) => ({
+          id: client.id,
+          title: client.name,
+          subtitle: client.secondaryName,
+          badge: "Existing client",
+          searchTerm: client.name,
+        }));
+    },
+    [clients]
+  );
   const existingProductIds = useMemo(
     () => new Set(saleLines.map((line) => line.productId)),
     [saleLines]
@@ -132,6 +154,23 @@ export function DirectSellForm({
       })
       .finally(() => {
         if (!cancelled) setLoadingWarehouses(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.clients
+      .list()
+      .then((data) => {
+        if (!cancelled) setClients(data);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setClients([]);
+        setError(err instanceof ApiError ? err.message : "Could not load clients");
       });
     return () => {
       cancelled = true;
@@ -385,12 +424,18 @@ export function DirectSellForm({
                 <label className="block text-base font-semibold text-stone-700">
                   Client name
                 </label>
-                <input
-                  required
+                <SearchInputWithSuggestions
                   value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
-                  className="form-input mt-2"
-                  placeholder="Who is buying?"
+                  onChange={setClientName}
+                  onSelect={(suggestion) => setClientName(suggestion.searchTerm)}
+                  fetchSuggestions={fetchClientSuggestions}
+                  placeholder="Search existing clients or enter a new name…"
+                  ariaLabel="Search or enter client name"
+                  inputClassName="form-input mt-2 w-full"
+                  debounceMs={150}
+                  emptyMessage={(term) =>
+                    `No existing client matches “${term}”. You can still use this name.`
+                  }
                 />
               </div>
               <div>
