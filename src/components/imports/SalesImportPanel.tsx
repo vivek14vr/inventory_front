@@ -611,13 +611,32 @@ export function SalesImportPanel() {
   }
 
   function updateLineAction(rowNumber: number, patch: Partial<LineActionState>) {
-    const line = preview?.vouchers
-      .flatMap((voucher) => voucher.lines)
-      .find((item) => item.rowNumber === rowNumber);
+    const voucher = preview?.vouchers.find((item) =>
+      item.lines.some((line) => line.rowNumber === rowNumber)
+    );
+    const line = voucher?.lines.find((item) => item.rowNumber === rowNumber);
     const current = line
       ? resolvedLineAction(line, lineActions[rowNumber])
       : lineActions[rowNumber];
     if (line && current) {
+      if (patch.ignore === true && !current.ignore && voucher) {
+        const otherActiveLines = voucher.lines.filter((voucherLine) => {
+          if (voucherLine.rowNumber === rowNumber) return false;
+          return !resolvedLineAction(
+            voucherLine,
+            lineActions[voucherLine.rowNumber]
+          ).ignore;
+        }).length;
+        if (otherActiveLines === 0) {
+          pushToast({
+            title: "Cannot skip the only product",
+            message: `Invoice ${resolvedVoucherAction(voucher, voucherActions[voucher.voucherIndex]).invoiceNumber || voucher.invoiceNumber} has only one active product. Use “Ignore this entire invoice” if you want to exclude the invoice.`,
+            variant: "warning",
+            durationMs: 9000,
+          });
+          return;
+        }
+      }
       if (patch.ignore === true && !current.ignore && line.category === "matched") {
         pushToast({
           title: "Matched product will be skipped",
