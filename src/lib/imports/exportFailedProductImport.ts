@@ -28,20 +28,16 @@ function warehouseLowStockColumns(
   return columns;
 }
 
-export function downloadFailedProductImportExcel(
+export function buildProductImportWorkbook(
   result: ProductImportResult,
   sourceFileName?: string
-) {
-  const failed = result.rows.filter((row) => row.status === "FAILED");
-  if (failed.length === 0) return;
-
-  const sheetRows = failed.map((row) => {
+): { workbook: XLSX.WorkBook; fileName: string } {
+  const sheetRows = result.rows.map((row) => {
     const per = row.unitsPerStockUnit ?? 1;
     const totalLow = splitLowStockForExport(row.totalLowStockThreshold, per);
     return {
       brand: row.brandName,
       "product primary name": row.primaryName,
-      "product secondary name": row.secondaryName ?? "",
       unit: row.baseUnit ?? "",
       "units in a cartoon": per,
       "total low quantity cartoon": totalLow.cartoon,
@@ -54,14 +50,26 @@ export function downloadFailedProductImportExcel(
       "product action": row.action,
       "merge target product id": row.mergeTargetProductId ?? "",
       "error message": row.message ?? "",
+      status: row.status,
       "excel row": row.rowNumber,
     };
   });
 
   const worksheet = XLSX.utils.json_to_sheet(sheetRows);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Failed rows");
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Import results");
 
   const baseName = sourceFileName?.replace(/\.(xlsx|xls|csv)$/i, "") ?? "product-import";
-  XLSX.writeFile(workbook, `${baseName}-failed.xlsx`);
+  return { workbook, fileName: `${baseName}-import-results.xlsx` };
 }
+
+export function downloadProductImportExcel(
+  result: ProductImportResult,
+  sourceFileName?: string
+) {
+  const { workbook, fileName } = buildProductImportWorkbook(result, sourceFileName);
+  XLSX.writeFile(workbook, fileName);
+}
+
+/** Kept for older callers; the complete result file now includes failures and successes. */
+export const downloadFailedProductImportExcel = downloadProductImportExcel;

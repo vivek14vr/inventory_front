@@ -356,6 +356,22 @@ export function formatAuditDetails(log: AuditLogEntry): string {
       .join(" · ");
   }
 
+  if (action === "IMPORT_REPORT_STORED") {
+    const file = metaString(meta.reportFileName) ?? metaString(meta.fileName);
+    const kind = metaString(meta.kind);
+    const success = metaString(meta.successCount);
+    const failed = metaString(meta.failedCount);
+    return [
+      file ? `Stored generated Excel: ${file}` : "Stored generated import Excel",
+      kind ? `Type: ${kind}` : undefined,
+      success !== undefined && failed !== undefined
+        ? `${success} succeeded, ${failed} failed`
+        : undefined,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
   if (action === "USER_UPDATED") {
     const target = metaString(meta.targetUserName) ?? metaString(meta.targetUserEmail);
     const rawChanges = meta.changes as string[] | undefined;

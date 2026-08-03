@@ -10,10 +10,11 @@ import {
   ImportTip,
   ImportUploadForm,
 } from "@/components/imports/ImportUploadForm";
-import { downloadFailedProductImportExcel } from "@/lib/imports/exportFailedProductImport";
+import { downloadProductImportExcel } from "@/lib/imports/exportFailedProductImport";
 import { formatProductUnitSummary } from "@/lib/products/productUnits";
 import { formatLowStockImportSummary, formatWarehouseLowStockImportSummary } from "@/lib/imports/formatLowStockImportSummary";
-import { formatSecondaryName } from "@/lib/products/productNames";
+import { useToast } from "@/contexts/ToastContext";
+import { persistGeneratedImportReport } from "@/lib/imports/persistImportReport";
 import type {
   ProductImportPreview,
   ProductImportPreviewRow,
@@ -32,7 +33,6 @@ const DEMO_ROWS = [
   {
     brand: "cream bell",
     primary: "11 inch plate",
-    secondary: "plate 11 inch",
     unit: "pieces",
     unitsPerCarton: "800",
     lowCartons: "5",
@@ -93,6 +93,7 @@ function mergeProductIdForBrand(
 }
 
 export function ProductImportPanel() {
+  const { pushToast } = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ProductImportPreview | null>(null);
   const [rowActions, setRowActions] = useState<Record<number, RowActionState>>({});
@@ -219,9 +220,45 @@ export function ProductImportPanel() {
         rows,
       });
       setResult(importResult);
+      try {
+        await persistGeneratedImportReport("products", importResult, file?.name);
+      } catch (reportError) {
+        setError(
+          reportError instanceof ApiError
+            ? `Import completed, but its generated Excel file could not be saved: ${reportError.message}`
+            : "Import completed, but its generated Excel file could not be saved"
+        );
+      }
       setSuccess(
         `Import complete: ${importResult.successCount} succeeded, ${importResult.failedCount} failed`
       );
+      const matchedCount = importResult.rows.filter(
+        (row) => row.status === "SUCCESS" && row.action === "merge"
+      ).length;
+      const newProducts = importResult.rows.filter(
+        (row) => row.status === "SUCCESS" && row.action === "create"
+      ).length;
+      const newBrands = new Set(
+        importResult.rows
+          .filter((row) => row.status === "SUCCESS" && row.brandAction === "create")
+          .map((row) => row.brandName.trim().toLowerCase())
+      ).size;
+      if (matchedCount > 0) {
+        pushToast({
+          title: "Matched products skipped as new",
+          message: `${matchedCount} matched product${matchedCount === 1 ? " was" : "s were"} merged into existing records instead of being created again.`,
+          variant: "warning",
+          durationMs: 8000,
+        });
+      }
+      if (newProducts > 0 || newBrands > 0) {
+        pushToast({
+          title: "New records created",
+          message: `${newProducts} new product${newProducts === 1 ? "" : "s"} and ${newBrands} new brand${newBrands === 1 ? "" : "s"} created by this import.`,
+          variant: "success",
+          durationMs: 8000,
+        });
+      }
       setPreview(null);
       setRowActions({});
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -288,7 +325,6 @@ export function ProductImportPanel() {
                 <tr className="border-b border-stone-200 bg-white text-[11px] font-bold uppercase tracking-wide text-stone-500">
                   <th className="whitespace-nowrap px-3 py-2.5">Brand</th>
                   <th className="whitespace-nowrap px-3 py-2.5">Primary name</th>
-                  <th className="whitespace-nowrap px-3 py-2.5">Secondary</th>
                   <th className="whitespace-nowrap px-3 py-2.5">Unit</th>
                   <th className="whitespace-nowrap px-3 py-2.5">Units / carton</th>
                   <th className="whitespace-nowrap px-3 py-2.5">Total low (cartons)</th>
@@ -307,7 +343,6 @@ export function ProductImportPanel() {
                   >
                     <td className="px-3 py-2.5 font-medium">{row.brand}</td>
                     <td className="px-3 py-2.5">{row.primary}</td>
-                    <td className="px-3 py-2.5 text-stone-500">{row.secondary}</td>
                     <td className="px-3 py-2.5">{row.unit}</td>
                     <td className="px-3 py-2.5 tabular-nums">{row.unitsPerCarton}</td>
                     <td className="px-3 py-2.5 tabular-nums">{row.lowCartons || "—"}</td>
@@ -453,7 +488,6 @@ function ImportReviewTable({
               <th className="px-3 py-2">Brand (file)</th>
               <th className="px-3 py-2">Brand action</th>
               <th className="px-3 py-2">Primary</th>
-              <th className="px-3 py-2">Secondary</th>
               <th className="px-3 py-2">Units</th>
               {mode === "matched" && <th className="px-3 py-2">Product match</th>}
               {mode !== "errors" && <th className="px-3 py-2">Product action</th>}
@@ -559,9 +593,6 @@ function ImportReviewTable({
                     </div>
                   </td>
                   <td className="px-3 py-2 font-medium text-zinc-900">{row.primaryName}</td>
-                  <td className="px-3 py-2 text-zinc-600">
-                    {formatSecondaryName(row.secondaryName)}
-                  </td>
                   <td className="px-3 py-2 text-zinc-600">
                     {formatProductUnitSummary(row)}
                     {row.totalLowStockThreshold != null ? (
@@ -692,8 +723,6 @@ function ProductImportResultSummary({
   result: ProductImportResult;
   sourceFileName?: string;
 }) {
-  const failedCount = result.rows.filter((row) => row.status === "FAILED").length;
-
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -706,18 +735,14 @@ function ProductImportResultSummary({
             Success: {result.successCount} · Failed: {result.failedCount}
           </p>
         </div>
-        {failedCount > 0 ? (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() =>
-              downloadFailedProductImportExcel(result, sourceFileName ?? result.fileName)
-            }
-          >
-            Download failed rows (.xlsx)
-          </Button>
-        ) : null}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={() => downloadProductImportExcel(result, sourceFileName ?? result.fileName)}
+        >
+          Download all import results (.xlsx)
+        </Button>
       </div>
       <div className="mt-4 max-h-80 overflow-auto rounded-lg border border-zinc-200">
         <table className="w-full text-left text-sm">
@@ -736,7 +761,6 @@ function ProductImportResultSummary({
                 <td className="px-3 py-2">{row.rowNumber}</td>
                 <td className="px-3 py-2">
                   {row.primaryName}
-                  {row.secondaryName ? ` · ${row.secondaryName}` : ""}
                   <div className="text-xs text-zinc-500">{row.brandName}</div>
                 </td>
                 <td className="px-3 py-2 capitalize">{row.action}</td>

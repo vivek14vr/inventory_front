@@ -19,6 +19,28 @@ export type TallyImport = {
   createdAt: string;
 };
 
+export type ImportLogKind = "products" | "sales" | "clients";
+
+export type ImportLogSummary = {
+  id: string;
+  kind: ImportLogKind;
+  fileName: string;
+  importedBy: { id: string; name: string };
+  totalRows: number;
+  successCount: number;
+  failedCount: number;
+  skippedCount: number;
+  createdProductCount: number;
+  createdBrandCount: number;
+  createdClientCount: number;
+  createdAt: string;
+  hasReportFile: boolean;
+};
+
+export type ImportLogDetail = ImportLogSummary & {
+  result: ProductImportResult | SalesImportResult | ClientImportResult;
+};
+
 export type WarehouseLowStockImportEntry = {
   warehouseId?: string;
   warehouseName: string;

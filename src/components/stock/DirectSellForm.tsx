@@ -10,6 +10,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { api, ApiError } from "@/lib/api/client";
 import {
+  formatStockUnitConversion,
   formatBaseQuantityWithStockUnit,
   quantityEntryToBase,
   type QuantityEntryMode,
@@ -477,6 +478,11 @@ export function DirectSellForm({
                         <p className="font-semibold text-stone-900">{line.product.name}</p>
                         {line.product.secondaryName?.trim() ? (
                           <p className="text-sm text-stone-500">{line.product.secondaryName}</p>
+                        ) : null}
+                        {formatStockUnitConversion(line.product) ? (
+                          <p className="mt-1 text-xs font-semibold text-orange-700">
+                            {formatStockUnitConversion(line.product)}
+                          </p>
                         ) : null}
                         <p className="mt-1 text-sm font-medium text-stone-600">
                           {formatBaseQuantityWithStockUnit(

@@ -810,6 +810,64 @@ export const api = {
   },
 
   imports: {
+    listLogs: () =>
+      apiClient<import("@/types/imports").ImportLogSummary[]>("/imports/logs"),
+    getLog: (id: string) =>
+      apiClient<import("@/types/imports").ImportLogDetail>(`/imports/logs/${id}`),
+    saveGeneratedReport: async (input: {
+      kind: import("@/types/imports").ImportLogKind;
+      fileName: string;
+      result: ProductImportResult | SalesImportResult | ClientImportResult;
+      report: File;
+    }) => {
+      const form = new FormData();
+      form.append("kind", input.kind);
+      form.append("fileName", input.fileName);
+      form.append("result", JSON.stringify(input.result));
+      form.append("report", input.report);
+      const response = await fetchWithAuth(apiUrl("/imports/logs/report"), {
+        method: "POST",
+        body: form,
+      });
+      const body = await parseJsonResponse<import("@/types/imports").ImportLogSummary>(response);
+      if (!response.ok || !body.success) {
+        throw new ApiError(body.message ?? "Could not save generated import report", response.status, body.code);
+      }
+      return body.data as import("@/types/imports").ImportLogSummary;
+    },
+    downloadGeneratedReport: async (id: string) => {
+      const response = await fetchWithAuth(apiUrl(`/imports/logs/${id}/download`), {});
+      if (!response.ok) {
+        const body = await parseJsonResponse<unknown>(response);
+        throw new ApiError(body.message ?? "Generated import file is unavailable", response.status, body.code);
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition");
+      const fileName = disposition?.match(/filename="([^"]+)"/)?.[1] ?? "import-results.xlsx";
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    },
+    downloadGeneratedReportForAudit: async (auditId: string) => {
+      const response = await fetchWithAuth(
+        apiUrl(`/imports/logs/audit/${auditId}/download`),
+        {}
+      );
+      if (!response.ok) {
+        const body = await parseJsonResponse<unknown>(response);
+        throw new ApiError(body.message ?? "Generated import file is unavailable", response.status, body.code);
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition");
+      const fileName = disposition?.match(/filename="([^"]+)"/)?.[1] ?? "import-results.xlsx";
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    },
     list: () => apiClient<TallyImport[]>("/imports"),
     get: (id: string) => apiClient<TallyImport>(`/imports/${id}`),
     uploadTally: async (file: File, warehouseId: string): Promise<TallyImport> => {

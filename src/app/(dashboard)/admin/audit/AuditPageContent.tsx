@@ -47,6 +47,15 @@ function formatDate(iso: string) {
   });
 }
 
+function hasGeneratedImportFile(log: AuditLogEntry): boolean {
+  const route = String(log.metadata?.route ?? "");
+  return (
+    log.outcome !== "FAILURE" &&
+    ((log.action === "IMPORT_REPORT_STORED" && log.entity === "ImportLog") ||
+      (log.entity === "Import" && route.endsWith("/imports/logs/report")))
+  );
+}
+
 export function AuditPageContent() {
   const [filters, setFilters] = useState<AuditFilters>({});
   const [users, setUsers] = useState<PublicUser[]>([]);
@@ -56,6 +65,7 @@ export function AuditPageContent() {
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<"pdf" | "excel" | null>(null);
   const [revertingId, setRevertingId] = useState<string | null>(null);
+  const [downloadingImportId, setDownloadingImportId] = useState<string | null>(null);
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
   const [userFilterError, setUserFilterError] = useState("");
@@ -177,6 +187,22 @@ export function AuditPageContent() {
       setError(err instanceof ApiError ? err.message : "Failed to revert action");
     } finally {
       setRevertingId(null);
+    }
+  }
+
+  async function downloadImportFile(log: AuditLogEntry) {
+    setDownloadingImportId(log.id);
+    setError("");
+    try {
+      await api.imports.downloadGeneratedReportForAudit(log.id);
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Could not download the generated import Excel file"
+      );
+    } finally {
+      setDownloadingImportId(null);
     }
   }
 
@@ -356,7 +382,7 @@ export function AuditPageContent() {
                 <th className="px-4 py-3">Action</th>
                 <th className="px-4 py-3">Entity</th>
                 <th className="px-4 py-3 hidden md:table-cell">Details</th>
-                <th className="px-4 py-3 text-right">Revert</th>
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
@@ -405,7 +431,17 @@ export function AuditPageContent() {
                       {formatAuditDetails(log)}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {log.revertedAt ? (
+                      {hasGeneratedImportFile(log) ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          loading={downloadingImportId === log.id}
+                          disabled={downloadingImportId !== null}
+                          onClick={() => void downloadImportFile(log)}
+                        >
+                          Download import .xlsx
+                        </Button>
+                      ) : log.revertedAt ? (
                         <span className="text-xs font-semibold text-emerald-700">Reverted</span>
                       ) : log.canRevert && canRevertActions ? (
                         <Button

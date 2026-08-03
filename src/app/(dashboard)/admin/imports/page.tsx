@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ClientImportPanel } from "@/components/imports/ClientImportPanel";
 import { ProductImportPanel } from "@/components/imports/ProductImportPanel";
 import { SalesImportPanel } from "@/components/imports/SalesImportPanel";
+import { ImportLogHistory } from "@/components/imports/ImportLogHistory";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -142,6 +143,8 @@ function AdminImportsPageContent() {
       ) : (
         <SalesImportPanel />
       )}
+
+      <ImportLogHistory kind={activeMode} />
     </div>
   );
 }

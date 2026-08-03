@@ -17,6 +17,7 @@ import type {
   ClientImportResult,
   ClientImportRowDecision,
 } from "@/types/imports";
+import { persistGeneratedImportReport } from "@/lib/imports/persistImportReport";
 
 type RowActionState = {
   action: "merge" | "create";
@@ -138,6 +139,15 @@ export function ClientImportPanel() {
         rows,
       });
       setResult(importResult);
+      try {
+        await persistGeneratedImportReport("clients", importResult, file?.name);
+      } catch (reportError) {
+        setError(
+          reportError instanceof ApiError
+            ? `Import completed, but its generated Excel file could not be saved: ${reportError.message}`
+            : "Import completed, but its generated Excel file could not be saved"
+        );
+      }
       setSuccess(
         `Import complete: ${importResult.successCount} succeeded, ${importResult.failedCount} failed`
       );

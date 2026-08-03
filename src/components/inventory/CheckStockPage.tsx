@@ -591,16 +591,29 @@ function CheckStockPageContent() {
           ) : null}
         </div>
 
-        <SelectMenu
-          label="Brand"
-          className="w-full max-w-xl"
-          value={brandId}
-          onChange={(v) => handleFilterChange(setBrandId, v)}
-          options={[
-            { value: "", label: "All brands" },
-            ...brands.map((b) => ({ value: b.id, label: b.name })),
-          ]}
-        />
+        <div>
+          <p className="mb-2 text-xs font-medium text-zinc-500">Brand</p>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by brand">
+            {[{ id: "", name: "All brands" }, ...brands].map((brand) => {
+              const active = brandId === brand.id;
+              return (
+                <button
+                  key={brand.id || "all"}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => handleFilterChange(setBrandId, brand.id)}
+                  className={`rounded-xl border-2 px-4 py-2 text-sm font-bold transition ${
+                    active
+                      ? "border-orange-600 bg-orange-600 text-white shadow-sm"
+                      : "border-stone-200 bg-white text-stone-700 hover:border-orange-300 hover:bg-orange-50"
+                  }`}
+                >
+                  {brand.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         <div className="flex flex-wrap items-end gap-3 border-t border-zinc-100 pt-4">
           <SelectMenu
