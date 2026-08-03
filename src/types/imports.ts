@@ -260,6 +260,7 @@ export type SalesImportConfirmVoucher = {
   invoiceNumber: string;
   clientAction: "merge" | "create";
   mergeTargetClientId?: string;
+  ignore?: boolean;
   lines: SalesImportConfirmLine[];
 };
 

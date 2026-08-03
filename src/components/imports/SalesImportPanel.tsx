@@ -13,6 +13,7 @@ import {
 import { downloadSalesImportReport } from "@/lib/imports/exportSalesImportReport";
 import { useToast } from "@/contexts/ToastContext";
 import { persistGeneratedImportReport } from "@/lib/imports/persistImportReport";
+import { createSalesImportBatches } from "@/lib/imports/salesImportBatches";
 import { formatSecondaryName } from "@/lib/products/productNames";
 import type {
   SalesImportConfirmVoucher,
@@ -32,15 +33,6 @@ import type {
 const SALES_IMPORT_CONFIRM_BATCH_SIZE = 5;
 /** Brief pause between batches so Node can reclaim memory before the next confirm. */
 const SALES_IMPORT_CONFIRM_BATCH_PAUSE_MS = 200;
-
-function chunkArray<T>(items: T[], size: number): T[][] {
-  if (size < 1) return [items];
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size));
-  }
-  return chunks;
-}
 
 function mergeWarehouseList(
   lists: Array<Array<{ id: string; name: string; code: string }> | undefined>
@@ -256,12 +248,11 @@ function summarizeSalesImportImpact(
   voucherActions: Record<number, VoucherActionState>,
   lineActions: Record<number, LineActionState>
 ): SalesImportImpact {
-  let newProducts = 0;
   let manuallyMatchedProducts = 0;
   let skippedMatchedProducts = 0;
   let ignoredInvoices = 0;
   const newBrandsByName = new Map<string, SalesImportImpactBrandItem>();
-  const newProductItems: SalesImportImpactProductItem[] = [];
+  const newProductsByName = new Map<string, SalesImportImpactProductItem>();
   const manuallyMatchedProductItems: SalesImportImpactProductItem[] = [];
   const skippedMatchedProductItems: SalesImportImpactProductItem[] = [];
   const ignoredInvoiceItems: SalesImportImpactInvoiceItem[] = [];
@@ -339,15 +330,17 @@ function summarizeSalesImportImpact(
         });
       }
       if (state.action === "create") {
-        newProducts += 1;
-        newProductItems.push({
-          rowNumber: line.rowNumber,
-          invoiceNumber: voucherState.invoiceNumber || voucher.invoiceNumber,
-          productName: state.productName || line.productName,
-          brandName: state.brandName || line.brandName,
-          quantity: state.quantity,
-          warehouseName: line.warehouseName || voucher.warehouseName || "Unknown warehouse",
-        });
+        const key = normalizeLookupKey(state.productName || line.productName);
+        if (!newProductsByName.has(key)) {
+          newProductsByName.set(key, {
+            rowNumber: line.rowNumber,
+            invoiceNumber: voucherState.invoiceNumber || voucher.invoiceNumber,
+            productName: state.productName || line.productName,
+            brandName: state.brandName || line.brandName,
+            quantity: state.quantity,
+            warehouseName: line.warehouseName || voucher.warehouseName || "Unknown warehouse",
+          });
+        }
       }
       if (state.brandAction === "create" && state.brandName.trim()) {
         const key = normalizeLookupKey(state.brandName);
@@ -363,12 +356,12 @@ function summarizeSalesImportImpact(
   }
 
   return {
-    newProducts,
+    newProducts: newProductsByName.size,
     newBrands: newBrandsByName.size,
     manuallyMatchedProducts,
     skippedMatchedProducts,
     ignoredInvoices,
-    newProductItems,
+    newProductItems: [...newProductsByName.values()],
     newBrandItems: [...newBrandsByName.values()],
     manuallyMatchedProductItems,
     skippedMatchedProductItems,
@@ -508,6 +501,26 @@ export function SalesImportPanel() {
         : EMPTY_IMPORT_IMPACT,
     [preview, voucherActions, lineActions]
   );
+
+  const activeImportTotals = useMemo(() => {
+    if (!preview) return { invoices: 0, lines: 0 };
+    let invoices = 0;
+    let lines = 0;
+    for (const voucher of preview.vouchers) {
+      if (resolvedVoucherAction(voucher, voucherActions[voucher.voucherIndex]).ignore) {
+        continue;
+      }
+      const activeLines = voucher.lines.filter((line) => {
+        const state = resolvedLineAction(line, lineActions[line.rowNumber]);
+        return !state.ignore && line.errors.length === 0 && Boolean(line.warehouseId);
+      }).length;
+      if (activeLines > 0) {
+        invoices += 1;
+        lines += activeLines;
+      }
+    }
+    return { invoices, lines };
+  }, [preview, voucherActions, lineActions]);
 
   const allLinesReady = useMemo(() => {
     if (!preview) return false;
@@ -750,7 +763,6 @@ export function SalesImportPanel() {
       const vouchers = preview.vouchers
         .map((voucher) => {
           const voucherState = resolvedVoucherAction(voucher, voucherActions[voucher.voucherIndex]);
-          if (voucherState.ignore) return null;
           return {
             voucherIndex: voucher.voucherIndex,
             headerRowNumber: voucher.headerRowNumber,
@@ -759,6 +771,7 @@ export function SalesImportPanel() {
             clientSecondaryName: voucherState.clientSecondaryName.trim() || undefined,
             invoiceNumber: voucherState.invoiceNumber.trim(),
             clientAction: voucherState.clientAction,
+            ignore: voucherState.ignore,
             mergeTargetClientId:
               voucherState.clientAction === "merge"
                 ? voucherState.mergeTargetClientId
@@ -766,7 +779,8 @@ export function SalesImportPanel() {
             lines: voucher.lines
               .map((line) => {
                 const state = resolvedLineAction(line, lineActions[line.rowNumber]);
-                if (state.ignore || line.errors.length > 0 || !line.warehouseId) {
+                const ignored = voucherState.ignore || state.ignore;
+                if (!ignored && (line.errors.length > 0 || !line.warehouseId)) {
                   return null;
                 }
                 const brandId =
@@ -783,8 +797,9 @@ export function SalesImportPanel() {
                   rowNumber: line.rowNumber,
                   productName: state.productName.trim(),
                   brandName: state.brandName.trim(),
-                  quantity: Number.parseInt(state.quantity, 10),
-                  warehouseId: line.warehouseId,
+                  quantity: Number.parseInt(state.quantity, 10) || 0,
+                  warehouseId: line.warehouseId || "",
+                  ignore: ignored,
                   brandAction: state.brandAction,
                   mergeTargetBrandId: brandId,
                   action: state.action,
@@ -797,8 +812,9 @@ export function SalesImportPanel() {
                 ): line is NonNullable<typeof line> =>
                   Boolean(
                     line &&
-                      (line.brandAction === "merge" ? line.mergeTargetBrandId : line.brandName) &&
-                      (line.action === "merge" ? line.mergeTargetProductId : true)
+                      (line.ignore ||
+                        ((line.brandAction === "merge" ? line.mergeTargetBrandId : line.brandName) &&
+                          (line.action === "merge" ? line.mergeTargetProductId : true)))
                   )
               ),
           };
@@ -813,7 +829,10 @@ export function SalesImportPanel() {
         return;
       }
 
-      const batches = chunkArray(vouchers, SALES_IMPORT_CONFIRM_BATCH_SIZE);
+      const batches = createSalesImportBatches(
+        vouchers,
+        SALES_IMPORT_CONFIRM_BATCH_SIZE
+      );
       const batchResults: SalesImportResult[] = [];
       const invoicesTotal = vouchers.length;
       let invoicesDone = 0;
@@ -1063,8 +1082,8 @@ export function SalesImportPanel() {
       {preview && confirmReviewOpen ? (
         <SalesImportConfirmationModal
           impact={importImpact}
-          totalInvoices={preview.totalVouchers}
-          totalLines={preview.totalLines}
+          totalInvoices={activeImportTotals.invoices}
+          totalLines={activeImportTotals.lines}
           onCancel={() => setConfirmReviewOpen(false)}
           onConfirm={() => void handleConfirm(true)}
         />
@@ -1408,6 +1427,7 @@ function SalesImportPreviewReview({
         voucher,
         voucherActions[voucher.voucherIndex]
       );
+      if (voucherState.ignore) continue;
       if (
         !voucherState.clientName.trim() ||
         !voucherState.invoiceNumber.trim() ||
@@ -1428,6 +1448,11 @@ function SalesImportPreviewReview({
 
   const importableCount = useMemo(() => {
     return preview.vouchers.reduce((sum, voucher) => {
+      const voucherState = resolvedVoucherAction(
+        voucher,
+        voucherActions[voucher.voucherIndex]
+      );
+      if (voucherState.ignore) return sum;
       return (
         sum +
         voucher.lines.filter((line) => {
@@ -1436,7 +1461,7 @@ function SalesImportPreviewReview({
         }).length
       );
     }, 0);
-  }, [preview, lineActions]);
+  }, [preview, voucherActions, lineActions]);
 
   const filteredVouchers = useMemo(() => {
     if (filter === "all") return preview.vouchers;
@@ -1445,6 +1470,7 @@ function SalesImportPreviewReview({
         voucher,
         voucherActions[voucher.voucherIndex]
       );
+      if (voucherState.ignore) return false;
       const voucherIssue =
         voucher.errors.length > 0 ||
         voucher.clientCategory === "new" ||
