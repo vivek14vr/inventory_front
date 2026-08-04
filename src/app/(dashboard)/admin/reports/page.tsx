@@ -13,6 +13,7 @@ import { Permission } from "@/lib/auth/permissions";
 import {
   formatBaseQuantityWithStockUnit,
   formatBaseUnits,
+  formatStockUnitConversion,
   type QuantityEntryMode,
   usesStockUnit,
 } from "@/lib/products/productUnits";
@@ -1224,7 +1225,14 @@ function SalesByClientInvoiceDetails({
                   key={`${line.product}-${line.brand}-${lineIndex}`}
                   className="border-t border-stone-100"
                 >
-                  <td className="px-4 py-2 font-medium text-stone-800">{line.product}</td>
+                  <td className="px-4 py-2 font-medium text-stone-800">
+                    <span>{line.product}</span>
+                    {formatStockUnitConversion(line) ? (
+                      <span className="mt-0.5 block text-xs font-normal text-stone-500">
+                        {formatStockUnitConversion(line)}
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-4 py-2 text-stone-600">{line.brand}</td>
                   <td className="px-4 py-2 text-right">
                     <ReportQuantityValue
