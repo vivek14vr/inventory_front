@@ -12,6 +12,7 @@ import {
 } from "@/components/imports/ImportUploadForm";
 import { downloadProductImportExcel } from "@/lib/imports/exportFailedProductImport";
 import { formatProductUnitSummary } from "@/lib/products/productUnits";
+import { formatSecondaryName } from "@/lib/products/productNames";
 import { formatLowStockImportSummary, formatWarehouseLowStockImportSummary } from "@/lib/imports/formatLowStockImportSummary";
 import { useToast } from "@/contexts/ToastContext";
 import { persistGeneratedImportReport } from "@/lib/imports/persistImportReport";
@@ -33,6 +34,7 @@ const DEMO_ROWS = [
   {
     brand: "cream bell",
     primary: "11 inch plate",
+    secondary: "plate 11 inch",
     unit: "pieces",
     unitsPerCarton: "800",
     lowCartons: "5",
@@ -325,6 +327,7 @@ export function ProductImportPanel() {
                 <tr className="border-b border-stone-200 bg-white text-[11px] font-bold uppercase tracking-wide text-stone-500">
                   <th className="whitespace-nowrap px-3 py-2.5">Brand</th>
                   <th className="whitespace-nowrap px-3 py-2.5">Primary name</th>
+                  <th className="whitespace-nowrap px-3 py-2.5">Secondary name</th>
                   <th className="whitespace-nowrap px-3 py-2.5">Unit</th>
                   <th className="whitespace-nowrap px-3 py-2.5">Units / carton</th>
                   <th className="whitespace-nowrap px-3 py-2.5">Total low (cartons)</th>
@@ -343,6 +346,7 @@ export function ProductImportPanel() {
                   >
                     <td className="px-3 py-2.5 font-medium">{row.brand}</td>
                     <td className="px-3 py-2.5">{row.primary}</td>
+                    <td className="px-3 py-2.5 text-stone-500">{row.secondary}</td>
                     <td className="px-3 py-2.5">{row.unit}</td>
                     <td className="px-3 py-2.5 tabular-nums">{row.unitsPerCarton}</td>
                     <td className="px-3 py-2.5 tabular-nums">{row.lowCartons || "—"}</td>
@@ -488,6 +492,7 @@ function ImportReviewTable({
               <th className="px-3 py-2">Brand (file)</th>
               <th className="px-3 py-2">Brand action</th>
               <th className="px-3 py-2">Primary</th>
+              <th className="px-3 py-2">Secondary</th>
               <th className="px-3 py-2">Units</th>
               {mode === "matched" && <th className="px-3 py-2">Product match</th>}
               {mode !== "errors" && <th className="px-3 py-2">Product action</th>}
@@ -593,6 +598,9 @@ function ImportReviewTable({
                     </div>
                   </td>
                   <td className="px-3 py-2 font-medium text-zinc-900">{row.primaryName}</td>
+                  <td className="px-3 py-2 text-zinc-600">
+                    {formatSecondaryName(row.secondaryName)}
+                  </td>
                   <td className="px-3 py-2 text-zinc-600">
                     {formatProductUnitSummary(row)}
                     {row.totalLowStockThreshold != null ? (
@@ -761,6 +769,9 @@ function ProductImportResultSummary({
                 <td className="px-3 py-2">{row.rowNumber}</td>
                 <td className="px-3 py-2">
                   {row.primaryName}
+                  {row.secondaryName ? (
+                    <div className="text-xs text-zinc-600">{row.secondaryName}</div>
+                  ) : null}
                   <div className="text-xs text-zinc-500">{row.brandName}</div>
                 </td>
                 <td className="px-3 py-2 capitalize">{row.action}</td>

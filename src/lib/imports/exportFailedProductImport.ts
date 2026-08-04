@@ -38,6 +38,7 @@ export function buildProductImportWorkbook(
     return {
       brand: row.brandName,
       "product primary name": row.primaryName,
+      "product secondary name": row.secondaryName ?? "",
       unit: row.baseUnit ?? "",
       "units in a cartoon": per,
       "total low quantity cartoon": totalLow.cartoon,
