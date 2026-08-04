@@ -441,13 +441,12 @@ function suggestProducts(
 
 function suggestClients(
   clients: SalesImportExistingClient[],
-  label: string,
-  limit = 12
+  label: string
 ): SalesImportExistingClient[] {
   const needle = label.trim().toLowerCase();
-  if (!needle) return clients.slice(0, limit);
+  if (!needle) return clients;
 
-  const scored = clients
+  return clients
     .map((client) => {
       const labels = [client.name, client.secondaryName]
         .filter((value): value is string => Boolean(value?.trim()))
@@ -459,12 +458,12 @@ function suggestClients(
       }
       return { client, score };
     })
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.client.name.localeCompare(b.client.name)
+    )
     .map((entry) => entry.client);
-
-  return scored.length > 0 ? scored : clients.slice(0, limit);
 }
 
 function productLabel(product: SalesImportExistingProduct): string {
