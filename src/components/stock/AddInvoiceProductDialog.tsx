@@ -111,7 +111,7 @@ export function AddInvoiceProductDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/45 p-4 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="add-invoice-product-title"
@@ -119,18 +119,20 @@ export function AddInvoiceProductDialog({
     >
       <form
         onSubmit={submit}
-        className="w-full max-w-xl rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="add-invoice-product-title" className="text-lg font-semibold text-zinc-900">
-          Add product to invoice
-        </h2>
-        <p className="mt-1 text-sm text-zinc-600">
-          Invoice {group.invoiceNumber || "—"} · {group.clientName || "Client"}
-          {group.warehouse?.name ? ` · ${group.warehouse.name}` : ""}
-        </p>
+        <div className="shrink-0 border-b border-zinc-100 px-6 py-5">
+          <h2 id="add-invoice-product-title" className="text-lg font-semibold text-zinc-900">
+            Add product to invoice
+          </h2>
+          <p className="mt-1 text-sm text-zinc-600">
+            Invoice {group.invoiceNumber || "—"} · {group.clientName || "Client"}
+            {group.warehouse?.name ? ` · ${group.warehouse.name}` : ""}
+          </p>
+        </div>
 
-        <div className="mt-5 space-y-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
           <BrandProductFields
             brandId={brandId}
             productId={productId}
@@ -164,7 +166,7 @@ export function AddInvoiceProductDialog({
           {error ? <p className="text-sm font-medium text-rose-700">{error}</p> : null}
         </div>
 
-        <div className="mt-6 flex justify-end gap-2">
+        <div className="shrink-0 flex justify-end gap-2 border-t border-zinc-100 bg-white px-6 py-4">
           <Button type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
             Cancel
           </Button>

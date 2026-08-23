@@ -75,6 +75,7 @@ export function BrandProductFields({
         }}
         options={brands.map((b) => ({ value: b.id, label: b.name }))}
         emptyMessage="No brands available"
+        optionsClassName="max-h-72 content-start overflow-y-auto overscroll-contain pr-1"
       />
       <div>
         <ButtonSelect
@@ -83,6 +84,7 @@ export function BrandProductFields({
           disabled={disabled || !brandId || loadingProducts}
           onChange={onProductChange}
           options={products.map((p) => ({ value: p.id, label: p.name }))}
+          optionsClassName="max-h-72 content-start overflow-y-auto overscroll-contain pr-1"
           emptyMessage={
             loadingProducts
               ? "Loading…"
