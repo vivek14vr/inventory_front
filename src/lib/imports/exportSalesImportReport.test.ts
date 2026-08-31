@@ -92,7 +92,12 @@ describe("sales import full report", () => {
 
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets["Import Status"]);
     assert.equal(rows.length, 4);
-    assert.deepEqual(rows.map((row) => row.Status), ["SUCCESS", "FAILURE", "SUCCESS", "FAILURE"]);
+    assert.deepEqual(rows.map((row) => row.Status), ["SUCCESS", "SUCCESS", "FAILURE", "FAILURE"]);
+    assert.deepEqual(rows.slice(2).map((row) => row.Level), ["INVOICE", "PRODUCT"]);
+    assert.equal(rows[3]?.["Invoice number"], "INV-2");
+    assert.equal(rows[3]?.Product, "Tray");
+    assert.equal(rows[3]?.Brand, "Brand B");
+    assert.equal(rows[3]?.Quantity, 20);
     assert.equal(rows[3]?.Message, "Insufficient stock");
     assert.ok(rows.every((row) => row["Processed date/time"] instanceof Date));
   });

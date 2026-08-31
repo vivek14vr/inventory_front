@@ -175,6 +175,30 @@ function buildImportStatusSheet(
   warehouseById: Map<string, { id: string; name: string; code: string }>
 ): XLSX.WorkSheet {
   const statusRows: Array<Record<string, string | number | Date>> = [];
+  const productRowsByVoucher = new Map<number, SalesImportResultLine[]>();
+  for (const row of result.rows) {
+    const voucherRows = productRowsByVoucher.get(row.voucherIndex) ?? [];
+    voucherRows.push(row);
+    productRowsByVoucher.set(row.voucherIndex, voucherRows);
+  }
+
+  const appendProductRow = (row: SalesImportResultLine) => {
+    statusRows.push({
+      Level: "PRODUCT",
+      "Excel row": row.rowNumber,
+      "Invoice date": parseDate(row.sellDate),
+      Client: row.clientName,
+      "Invoice number": row.invoiceNumber,
+      Product: row.productName,
+      Brand: row.brandName ?? "",
+      Quantity: row.quantity,
+      Warehouse: warehouseLabel(row, warehouseById),
+      Status: displayStatus(row.status),
+      Message: row.message ?? "",
+      "Processed date/time": processedDate(row.processedAt ?? result.completedAt),
+    });
+  };
+
   for (const voucher of result.vouchers) {
     statusRows.push({
       Level: "INVOICE",
@@ -190,22 +214,16 @@ function buildImportStatusSheet(
       Message: voucher.message ?? "",
       "Processed date/time": processedDate(voucher.processedAt ?? result.completedAt),
     });
+
+    for (const row of productRowsByVoucher.get(voucher.voucherIndex) ?? []) {
+      appendProductRow(row);
+    }
+    productRowsByVoucher.delete(voucher.voucherIndex);
   }
-  for (const row of result.rows) {
-    statusRows.push({
-      Level: "PRODUCT",
-      "Excel row": row.rowNumber,
-      "Invoice date": parseDate(row.sellDate),
-      Client: row.clientName,
-      "Invoice number": row.invoiceNumber,
-      Product: row.productName,
-      Brand: row.brandName ?? "",
-      Quantity: row.quantity,
-      Warehouse: warehouseLabel(row, warehouseById),
-      Status: displayStatus(row.status),
-      Message: row.message ?? "",
-      "Processed date/time": processedDate(row.processedAt ?? result.completedAt),
-    });
+
+  // Preserve any result line that does not have a matching invoice summary.
+  for (const rows of productRowsByVoucher.values()) {
+    for (const row of rows) appendProductRow(row);
   }
 
   const sheet = XLSX.utils.json_to_sheet(statusRows, {
